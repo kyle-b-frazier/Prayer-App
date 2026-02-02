@@ -5,11 +5,56 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Daily Prayers</title>
     
-    <link rel="apple-touch-icon" href="icon.ico">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Prayers">
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
+        const firebaseConfig = {
+            apiKey: "AIzaSyBzsnkFikMGtsWkFR837c-n15ozxVjAGXk",
+            authDomain: "prayer-app-cloud.firebaseapp.com",
+            projectId: "prayer-app-cloud",
+            storageBucket: "prayer-app-cloud.firebasestorage.app",
+            messagingSenderId: "1090528891146",
+            appId: "1:1090528891146:web:073dbda89ecd8682736af3",
+            measurementId: "G-9NZMGRVZQ8"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        let cloudDB = { Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: [], Sunday: [], everyday: [] };
+        let userDocRef = null;
+
+        // Connect to the Cloud
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                userDocRef = doc(db, "users", user.uid);
+                // Listen to cloud changes in real-time
+                onSnapshot(userDocRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        cloudDB = docSnap.data();
+                        renderPrayers(); 
+                        renderSpecialManager();
+                    } else {
+                        // First time user: upload empty template
+                        saveDB(cloudDB);
+                    }
+                });
+            } else {
+                signInAnonymously(auth);
+            }
+        });
+
+        // Globalized functions for your original script to use
+        window.getDB = () => cloudDB;
+        window.saveDB = async (newData) => {
+            if (userDocRef) {
+                await setDoc(userDocRef, newData);
+            }
+        };
+    </script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600&family=Lato:wght@300;400&display=swap');
         
@@ -33,7 +78,6 @@
         
         body { font-family: 'Lato', sans-serif; background: var(--bg-gradient); min-height: 100vh; color: var(--text-color); padding-bottom: 80px; }
         
-        /* STICKY HEADER AREA */
         .sticky-header {
             position: sticky;
             top: 0;
@@ -62,7 +106,7 @@
         .theme-toggle { background: var(--deep-green); color: white; border: none; padding: 10px 15px; border-radius: 30px; cursor: pointer; font-size: 0.75rem; box-shadow: 0 4px 10px var(--shadow); }
         
         .day-selector { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; max-width: 900px; margin: 0 auto 10px auto; }
-        .day-btn { background: var(--card-bg); border: 2px solid var(--sand); padding: 12px 2px; border-radius: 12px; font-family: 'Cormorant Garamond', serif; font-size: 0.95rem; cursor: pointer; color: var(--soft-green); transition: 0.2s; white-space: nowrap; }
+        .day-btn { background: var(--card-bg); border: 2px solid var(--sand); padding: 12px 2px; border-radius: 12px; font-family: 'Cormorant Garamond', serif; font-size: 1rem; cursor: pointer; color: var(--soft-green); transition: 0.2s; white-space: nowrap; overflow: hidden; text-overflow: clip; }
         .day-btn.active { background: var(--gold); color: white; border-color: var(--gold); }
         
         .nav-btn { width: 100%; padding: 14px; border-radius: 10px; font-family: 'Lato', sans-serif; font-size: 0.9rem; cursor: pointer; border: none; transition: 0.2s; text-align: center; }
@@ -107,7 +151,7 @@
             .right-column { order: -1; flex-direction: row; flex-wrap: wrap; position: static; margin-bottom: 20px; }
             .nav-btn { flex: 1 1 45%; font-size: 0.8rem; padding: 10px; }
             .day-selector { grid-template-columns: repeat(4, 1fr); }
-            .day-btn { font-size: 0.85rem; padding: 10px 2px; }
+            .day-btn { font-size: 0.85rem; }
             .sticky-header { padding: 10px 15px 5px 15px; }
         }
     </style>
@@ -132,18 +176,23 @@
                         <button class="nav-btn save-btn" id="dynamicAddBtn" onclick="saveNewPrayer()">Save Prayer</button>
                         <button class="nav-btn cancel-btn" onclick="showView()">Cancel</button>
                     </div>
+                    <div id="specialManagerArea" style="display:none;">
+                        <div class="manager-title" style="margin-top:20px; font-size:0.8rem; font-weight:bold; color:var(--gold); border-top:1px solid var(--sand); padding-top:10px; margin-bottom:10px;">Manage Special Group Prayers</div>
+                        <div id="specialItemsList"></div>
+                    </div>
                 </div>
                 <div class="sync-section">
-                    <button class="sync-btn" onclick="confirmExport()">Export Backup</button>
-                    <button class="sync-btn" onclick="document.getElementById('importFile').click()">Import Backup</button>
+                    <p style="font-size: 0.7rem; color: var(--gold); margin-bottom: 5px;">Cloud Sync Active</p>
+                    <button class="sync-btn" onclick="confirmExport()">Backup to File</button>
+                    <button class="sync-btn" onclick="document.getElementById('importFile').click()">Restore from File</button>
                     <input type="file" id="importFile" style="display:none" onchange="importData(event)">
                 </div>
             </div>
             <div class="right-column">
                 <button class="nav-btn mode-btn active" id="viewModeBtn" onclick="showView()">View Prayers</button>
-                <button class="nav-btn mode-btn" id="addModeBtn" onclick="openAddMode('day')">Add Prayer</button>
+                <button class="nav-btn mode-btn" id="addModeBtn" onclick="openAddMode('day')">Add Prayer for...</button>
                 <button class="nav-btn special-btn" onclick="openAddMode('everyday')">+ Everyday Prayers</button>
-                <button class="nav-btn special-btn" onclick="openAddMode('special')">+ Special Days</button>
+                <button class="nav-btn special-btn" onclick="openAddMode('special')">+ Special Prayers</button>
             </div>
         </div>
     </div>
@@ -164,19 +213,20 @@
         let currentDay = '';
         let selectedCategory = 'day';
         let multiSelectedDays = [];
+        let editingGroupId = null;
         const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
         window.addEventListener('scroll', () => {
             const header = document.getElementById('headerNav');
-            if (window.scrollY > 20) header.classList.add('scrolled');
-            else header.classList.remove('scrolled');
+            if (window.scrollY > 20) {
+                header.classList.add('scrolled');
+            } else {
+                header.classList.remove('scrolled');
+            }
         });
 
-        function getDB() {
-            const data = localStorage.getItem('prayerAppDB');
-            return data ? JSON.parse(data) : { Monday: [], Tuesday: [], Wednesday: [], Thursday: [], Friday: [], Saturday: [], Sunday: [], everyday: [] };
-        }
-        function saveDB(db) { localStorage.setItem('prayerAppDB', JSON.stringify(db)); }
+        // REPLACED: These now bridge to the Firebase Script at the top
+        // getDB() and saveDB() are now defined in the Firebase <script> block
 
         function showModal(msg, buttons, showInput = false) {
             const overlay = document.getElementById('modalOverlay');
@@ -215,11 +265,12 @@
             document.querySelectorAll('.day-btn').forEach(b => b.classList.remove('active'));
             const targetBtn = document.getElementById('btn-' + day);
             if(targetBtn) targetBtn.classList.add('active');
-            document.getElementById('addModeBtn').innerText = `Add for ${day}`;
+            document.getElementById('addModeBtn').innerText = `Add Prayer for ${day}`;
             showView();
         }
 
         function showView() {
+            editingGroupId = null;
             document.getElementById('prayerInput').value = '';
             document.getElementById('viewSection').style.display = 'block';
             document.getElementById('addSection').style.display = 'none';
@@ -234,13 +285,16 @@
             document.getElementById('viewSection').style.display = 'none';
             document.getElementById('addSection').style.display = 'block';
             document.getElementById('dayPicker').style.display = (cat === 'special') ? 'grid' : 'none';
+            document.getElementById('specialManagerArea').style.display = (cat === 'special') ? 'block' : 'none';
             if(cat === 'special') {
                 multiSelectedDays = [];
                 renderDayPicker();
-                document.getElementById('addTitle').innerText = "Add to Multiple Days";
+                renderSpecialManager();
+                document.getElementById('addTitle').innerText = "Add Special Prayer";
             } else {
-                document.getElementById('addTitle').innerText = (cat === 'everyday') ? "Everyday Prayer" : `Prayer for ${currentDay}`;
+                document.getElementById('addTitle').innerText = (cat === 'everyday') ? "Everyday Prayer" : `${currentDay} Prayer`;
             }
+            setTimeout(() => document.getElementById('prayerInput').focus(), 50);
         }
 
         function renderDayPicker() {
@@ -274,14 +328,38 @@
         }
 
         function addSub(dayKey, id) {
-            showModal("Add point:", [
+            showModal("Add specific detail:", [
                 { text: "Save", bg: 'var(--gold)', color: 'white', action: (val) => {
                     const db = getDB();
                     const prayer = db[dayKey].find(x => x.id === id);
                     if (!prayer) return;
-                    if(!prayer.subs) prayer.subs = [];
-                    prayer.subs.push({id: Date.now(), text: val});
-                    saveDB(db); renderPrayers();
+                    if (prayer.isSpecial && prayer.groupId) {
+                        setTimeout(() => {
+                            showModal("Add to all days?", [
+                                { text: "Just today", action: () => {
+                                    if(!prayer.subs) prayer.subs = [];
+                                    prayer.subs.push({id: Date.now(), text: val});
+                                    saveDB(db); renderPrayers();
+                                }},
+                                { text: "Add to all days", bg: 'var(--gold)', color: 'white', action: () => {
+                                    const gId = prayer.groupId;
+                                    weekDays.forEach(d => {
+                                        const inst = db[d].find(p => p.groupId === gId);
+                                        if (inst) {
+                                            if(!inst.subs) inst.subs = [];
+                                            inst.subs.push({id: Date.now() + Math.random(), text: val});
+                                        }
+                                    });
+                                    saveDB(db); renderPrayers();
+                                }},
+                                { text: "Cancel", isCancel: true, action: () => {} }
+                            ]);
+                        }, 300);
+                    } else {
+                        if(!prayer.subs) prayer.subs = [];
+                        prayer.subs.push({id: Date.now(), text: val});
+                        saveDB(db); renderPrayers();
+                    }
                 }},
                 { text: "Cancel", isCancel: true, action: () => {} }
             ], true);
@@ -289,23 +367,53 @@
 
         function deletePrayerRequest(dayKey, id, groupId = null) {
             const db = getDB();
-            showModal("Delete this prayer?", [
-                { text: "Delete", bg: 'var(--terracotta)', color: 'white', action: () => { 
-                    if (groupId) {
-                        weekDays.forEach(d => { db[d] = db[d].filter(p => p.groupId !== groupId); });
-                    } else {
+            if (groupId) {
+                showModal("Delete Special Prayer?", [
+                    { text: "Delete from today only", action: () => { 
                         db[dayKey] = db[dayKey].filter(p => p.id !== id);
-                    }
-                    saveDB(db); renderPrayers(); 
-                }},
-                { text: "Cancel", isCancel: true, action: () => {} }
-            ]);
+                        saveDB(db); renderPrayers(); renderSpecialManager();
+                    }},
+                    { text: "Delete from all days", bg: 'var(--terracotta)', color: 'white', action: () => { 
+                        weekDays.forEach(d => { db[d] = db[d].filter(p => p.groupId !== groupId); });
+                        saveDB(db); renderPrayers(); renderSpecialManager();
+                    }},
+                    { text: "Cancel", isCancel: true, action: () => {} }
+                ]);
+            } else {
+                showModal("Delete this prayer?", [
+                    { text: "Delete", bg: 'var(--terracotta)', color: 'white', action: () => { 
+                        db[dayKey] = db[dayKey].filter(p => p.id !== id);
+                        saveDB(db); renderPrayers(); 
+                    }},
+                    { text: "Cancel", isCancel: true, action: () => {} }
+                ]);
+            }
         }
 
         function deleteSub(dk, pi, si) {
             const db = getDB();
             const prayer = db[dk].find(x => x.id === pi);
-            if (prayer) {
+            if (!prayer) return;
+            const subObj = prayer.subs.find(s => s.id === si);
+            const subText = subObj ? subObj.text : "";
+
+            if (prayer.isSpecial && prayer.groupId) {
+                showModal("Delete point?", [
+                    { text: "Today only", action: () => {
+                        prayer.subs = prayer.subs.filter(s => s.id !== si);
+                        saveDB(db); renderPrayers();
+                    }},
+                    { text: "All days in group", bg: 'var(--terracotta)', color: 'white', action: () => {
+                        const gId = prayer.groupId;
+                        weekDays.forEach(d => {
+                            const inst = db[d].find(p => p.groupId === gId);
+                            if (inst && inst.subs) inst.subs = inst.subs.filter(s => s.text !== subText);
+                        });
+                        saveDB(db); renderPrayers();
+                    }},
+                    { text: "Cancel", isCancel: true, action: () => {} }
+                ]);
+            } else {
                 prayer.subs = prayer.subs.filter(s => s.id !== si);
                 saveDB(db); renderPrayers();
             }
@@ -318,26 +426,47 @@
             [{k: 'everyday', l: 'Everyday'}, {k: currentDay, l: currentDay}].forEach(group => {
                 (db[group.k] || []).forEach(p => {
                     let subHtml = (p.subs || []).map(s => `<div class="sub-item"><span class="sub-text">• ${s.text}</span><button class="icon-btn sub-delete" onclick="deleteSub('${group.k}', ${p.id}, ${s.id})">🗑</button></div>`).join('');
-                    html += `<div class="prayer-item"><div class="prayer-header"><div class="prayer-text">${p.text}</div><div class="prayer-actions"><button class="icon-btn" onclick="addSub('${group.k}', ${p.id})">➕</button><button class="icon-btn" onclick="deletePrayerRequest('${group.k}', ${p.id}, ${p.groupId})">🗑</button></div></div><div style="font-size:0.7rem; color:var(--soft-green); text-transform:uppercase; margin-top:4px;">${group.l}</div>${subHtml ? `<div class="sub-list">${subHtml}</div>` : ''}</div>`;
+                    html += `<div class="prayer-item"><div class="prayer-header"><div class="prayer-text">${p.text}</div><div class="prayer-actions"><button class="icon-btn" onclick="addSub('${group.k}', ${p.id})">➕</button><button class="icon-btn" onclick="deletePrayerRequest('${group.k}', ${p.id}, ${p.groupId})">🗑</button></div></div><div style="font-size:0.7rem; color:var(--soft-green); text-transform:uppercase; margin-top:4px;">${group.l} ${p.isSpecial ? '(Special)' : ''}</div>${subHtml ? `<div class="sub-list">${subHtml}</div>` : ''}</div>`;
                 });
             });
-            list.innerHTML = html || '<p style="text-align:center; padding:30px; color:#999; font-style:italic;">No prayers yet.</p>';
+            list.innerHTML = html || '<p style="text-align:center; padding:30px; color:#999; font-style:italic;">No prayers for this day.</p>';
+        }
+
+        function renderSpecialManager() {
+            const db = getDB();
+            const groups = {};
+            weekDays.forEach(d => { db[d].forEach(p => { if(p.isSpecial) groups[p.groupId] = p.text; }); });
+            const html = Object.keys(groups).map(gId => `<div style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:var(--cream); margin-bottom:5px; border-radius:8px;"><span>${groups[gId]}</span><button class="icon-btn" onclick="deletePrayerRequest('', 0, ${gId})">🗑</button></div>`).join('');
+            const area = document.getElementById('specialItemsList');
+            if(area) area.innerHTML = html || '<p style="font-size:0.8rem; color:#999;">No special prayers yet.</p>';
         }
 
         function confirmExport() {
+            showModal("Export your prayer list to a file?", [
+                { text: "Export Now", bg: 'var(--gold)', color: 'white', action: () => exportData() },
+                { text: "Cancel", isCancel: true, action: () => {} }
+            ]);
+        }
+
+        function exportData() {
             const db = getDB();
             const blob = new Blob([JSON.stringify(db, null, 2)], {type: 'application/json'});
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = 'prayer_backup.json';
+            a.download = 'prayers_backup.json';
             a.click();
         }
 
         function importData(e) {
             const reader = new FileReader();
             reader.onload = (event) => {
-                saveDB(JSON.parse(event.target.result));
-                renderPrayers();
+                try {
+                    const data = JSON.parse(event.target.result);
+                    saveDB(data);
+                    showModal("Import successful and synced to cloud!", [{text: "Perfect", action: () => {}}]);
+                } catch(err) {
+                    showModal("Error: Invalid backup file.", [{text: "OK", action: () => {}}]);
+                }
             };
             reader.readAsText(e.target.files[0]);
         }
@@ -346,9 +475,11 @@
             const target = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
             document.documentElement.setAttribute('data-theme', target);
             localStorage.setItem('prayerTheme', target);
+            document.getElementById('themeBtn').innerText = target === 'dark' ? 'Light Mode' : 'Dark Mode';
         }
 
-        document.documentElement.setAttribute('data-theme', localStorage.getItem('prayerTheme') || 'light');
+        const savedThemeInit = localStorage.getItem('prayerTheme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedThemeInit);
         initDaySelector();
     </script>
 </body>
