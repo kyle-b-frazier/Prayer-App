@@ -228,12 +228,13 @@
         // REPLACED: These now bridge to the Firebase Script at the top
         // getDB() and saveDB() are now defined in the Firebase <script> block
 
-        function showModal(msg, buttons, showInput = false) {
+        function showModal(msg, buttons, showInput = false, prefillValue = '') {
             const overlay = document.getElementById('modalOverlay');
             const container = document.getElementById('modalButtons');
             const inputContainer = document.getElementById('modalInputContainer');
             document.getElementById('modalMsg').innerText = msg;
             inputContainer.innerHTML = showInput ? `<input type="text" id="modalField" class="modal-input" placeholder="Type here..." autocomplete="off">` : '';
+            if(showInput) document.getElementById('modalField').value = prefillValue;
             container.innerHTML = '';
             buttons.forEach(b => {
                 const btn = document.createElement('button');
@@ -241,11 +242,11 @@
                 btn.style.background = b.bg || 'var(--sand)';
                 btn.style.color = b.color || 'var(--text-color)';
                 btn.innerText = b.text;
-                btn.onclick = () => { 
+                btn.onclick = () => {
                     const val = showInput ? document.getElementById('modalField').value.trim() : null;
-                    if(showInput && !val && !b.isCancel) return; 
-                    overlay.style.display = 'none'; 
-                    b.action(val); 
+                    if(showInput && !val && !b.isCancel) return;
+                    overlay.style.display = 'none';
+                    b.action(val);
                 };
                 container.appendChild(btn);
             });
@@ -365,6 +366,36 @@
             ], true);
         }
 
+        function editPrayerRequest(dayKey, id, groupId = null) {
+            const db = getDB();
+            const prayer = db[dayKey].find(p => p.id === id);
+            if (!prayer) return;
+            if (groupId) {
+                showModal("Edit special prayer text:", [
+                    { text: "Just today", action: (val) => {
+                        prayer.text = val;
+                        saveDB(db); renderPrayers();
+                    }},
+                    { text: "Update all days", bg: 'var(--gold)', color: 'white', action: (val) => {
+                        weekDays.forEach(d => {
+                            const inst = db[d].find(p => p.groupId === groupId);
+                            if (inst) inst.text = val;
+                        });
+                        saveDB(db); renderPrayers(); renderSpecialManager();
+                    }},
+                    { text: "Cancel", isCancel: true, action: () => {} }
+                ], true, prayer.text);
+            } else {
+                showModal("Edit prayer text:", [
+                    { text: "Save", bg: 'var(--gold)', color: 'white', action: (val) => {
+                        prayer.text = val;
+                        saveDB(db); renderPrayers();
+                    }},
+                    { text: "Cancel", isCancel: true, action: () => {} }
+                ], true, prayer.text);
+            }
+        }
+
         function deletePrayerRequest(dayKey, id, groupId = null) {
             const db = getDB();
             if (groupId) {
@@ -426,7 +457,7 @@
             [{k: 'everyday', l: 'Everyday'}, {k: currentDay, l: currentDay}].forEach(group => {
                 (db[group.k] || []).forEach(p => {
                     let subHtml = (p.subs || []).map(s => `<div class="sub-item"><span class="sub-text">• ${s.text}</span><button class="icon-btn sub-delete" onclick="deleteSub('${group.k}', ${p.id}, ${s.id})">🗑</button></div>`).join('');
-                    html += `<div class="prayer-item"><div class="prayer-header"><div class="prayer-text">${p.text}</div><div class="prayer-actions"><button class="icon-btn" onclick="addSub('${group.k}', ${p.id})">➕</button><button class="icon-btn" onclick="deletePrayerRequest('${group.k}', ${p.id}, ${p.groupId})">🗑</button></div></div><div style="font-size:0.7rem; color:var(--soft-green); text-transform:uppercase; margin-top:4px;">${group.l} ${p.isSpecial ? '(Special)' : ''}</div>${subHtml ? `<div class="sub-list">${subHtml}</div>` : ''}</div>`;
+                    html += `<div class="prayer-item"><div class="prayer-header"><div class="prayer-text">${p.text}</div><div class="prayer-actions"><button class="icon-btn" onclick="addSub('${group.k}', ${p.id})">➕</button><button class="icon-btn" onclick="editPrayerRequest('${group.k}', ${p.id}, ${p.groupId})">✏️</button><button class="icon-btn" onclick="deletePrayerRequest('${group.k}', ${p.id}, ${p.groupId})">🗑</button></div></div><div style="font-size:0.7rem; color:var(--soft-green); text-transform:uppercase; margin-top:4px;">${group.l} ${p.isSpecial ? '(Special)' : ''}</div>${subHtml ? `<div class="sub-list">${subHtml}</div>` : ''}</div>`;
                 });
             });
             list.innerHTML = html || '<p style="text-align:center; padding:30px; color:#999; font-style:italic;">No prayers for this day.</p>';
