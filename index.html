@@ -19,6 +19,8 @@
 </head>
 <body>
 
+    <div id="toast" class="toast"></div>
+
     <div class="bottom-nav">
         <div class="sync-indicator" id="syncStatus">Initializing...</div>
         <div class="nav-row">
@@ -38,7 +40,13 @@
     <div class="container">
         <div class="main-layout">
             <div class="left-column">
-                <div class="content-section" id="viewSection"><div id="prayerList"></div></div>
+                <div class="content-section" id="viewSection">
+                    <input type="search" id="searchBox" placeholder="Search all prayers..." oninput="onSearch(this.value)">
+                    <div id="progressLine"></div>
+                    <div id="prayerList"></div>
+                </div>
+                <div class="content-section" id="answeredSection" style="display:none;"></div>
+                <div class="content-section" id="calendarSection" style="display:none;"></div>
                 <div class="content-section" id="addSection" style="display: none;">
                     <h3 id="addTitle" style="font-family: 'Cormorant Garamond', serif; margin-bottom:10px;">Add Prayer</h3>
                     <div id="typePicker" class="pgrid" style="display:none;"></div>
@@ -66,6 +74,8 @@
                 <button class="nav-btn mode-btn" id="addModeBtn" onclick="openAddMode('day')">Add for Day</button>
                 <button class="nav-btn special-btn" onclick="openAddMode('everyday')">+ Everyday</button>
                 <button class="nav-btn special-btn" onclick="openAddMode('special')">+ Special Group</button>
+                <button class="nav-btn mode-btn" id="calendarBtn" onclick="showCalendar()">Calendar</button>
+                <button class="nav-btn mode-btn" id="answeredBtn" onclick="showAnswered()">Answered</button>
             </div>
         </div>
     </div>

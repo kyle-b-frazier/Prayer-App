@@ -77,7 +77,7 @@ onAuthStateChanged(auth, (user) => {
 
 window.replaceDB = (d) => { cloudDB = d; };
 
-window.getDB = () => { if (!Array.isArray(cloudDB.monthly)) cloudDB.monthly = []; return cloudDB; };
+window.getDB = () => { ['monthly', 'answered', 'prayed'].forEach(k => { if (!Array.isArray(cloudDB[k])) cloudDB[k] = []; }); return cloudDB; };
 
 window.saveDB = async (newData) => {
     const isOldDataNotEmpty = Object.values(cloudDB).some(arr => arr.length > 0);
