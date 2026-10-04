@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
 const firebaseConfig = {
@@ -13,7 +13,13 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+let db;
+try {
+    // Offline cache: reads and writes keep working without signal and sync later.
+    db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
+} catch (e) {
+    db = getFirestore(app);
+}
 const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
 
@@ -69,6 +75,8 @@ onAuthStateChanged(auth, (user) => {
     }
 });
 
+window.replaceDB = (d) => { cloudDB = d; };
+
 window.getDB = () => { if (!Array.isArray(cloudDB.monthly)) cloudDB.monthly = []; return cloudDB; };
 
 window.saveDB = async (newData) => {
@@ -79,6 +87,8 @@ window.saveDB = async (newData) => {
         console.error("Safety Valve: Blocked empty overwrite.");
         return;
     }
+
+    if (window.snapshotBackup) window.snapshotBackup();
 
     if (userDocRef) {
         try {

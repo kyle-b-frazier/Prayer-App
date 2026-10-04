@@ -1,3 +1,7 @@
+function esc(t) {
+    return String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 let currentDay = '';
 let selectedCategory = 'day';
 let multiSelectedDays = [];
@@ -520,7 +524,7 @@ function renderPrayers() {
 
             let subsHtml = (p.subs || []).map(s => `
                 <div class="sub-item">
-                    <span class="sub-text">• ${s.text}</span>
+                    <span class="sub-text">• ${esc(s.text)}</span>
                     <button class="icon-btn sub-delete" onclick="event.stopPropagation(); deleteSub('${cat.key}', ${p.id}, ${s.id})">🗑</button>
                 </div>`).join('');
 
@@ -528,7 +532,7 @@ function renderPrayers() {
                 <div class="drag-handle" ${cat.key === 'monthly' ? 'style="visibility:hidden"' : ''}>≡</div>
                 <div class="prayer-content">
                     <div class="prayer-header">
-                        <div class="prayer-text">${p.text}</div>
+                        <div class="prayer-text">${esc(p.text)}</div>
                         <div class="prayer-actions">
                             <button class="icon-btn" onclick="event.stopPropagation(); addSub('${cat.key}', ${p.id})">➕</button>
                             <button class="icon-btn" onclick="event.stopPropagation(); editPrayerRequest('${cat.key}', ${p.id}, ${p.groupId})">✏️</button>
@@ -555,12 +559,12 @@ function renderSpecialManager() {
     weekDays.forEach(d => { db[d].forEach(p => { if(p.isSpecial) groups[p.groupId] = p.text; }); });
     const html = Object.keys(groups).map(gId => `
         <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:var(--cream); margin-bottom:8px; border-radius:10px; border: 1px solid var(--sand);">
-            <span style="font-family: 'Cormorant Garamond', serif; font-size:1rem;">${groups[gId]}</span>
+            <span style="font-family: 'Cormorant Garamond', serif; font-size:1rem;">${esc(groups[gId])}</span>
             <button class="icon-btn" style="color:var(--terracotta);" onclick="deletePrayerRequest('', 0, ${gId})">🗑</button>
         </div>`).join('');
     const monthlyHtml = db.monthly.map(m => `
         <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:var(--cream); margin-bottom:8px; border-radius:10px; border: 1px solid var(--sand);">
-            <span style="font-family: 'Cormorant Garamond', serif; font-size:1rem;">${m.text}<br><span style="font-size:0.75rem; opacity:0.6;">${describeRule(m)}</span></span>
+            <span style="font-family: 'Cormorant Garamond', serif; font-size:1rem;">${esc(m.text)}<br><span style="font-size:0.75rem; opacity:0.6;">${describeRule(m)}</span></span>
             <button class="icon-btn" style="color:var(--terracotta);" onclick="deletePrayerRequest('monthly', ${m.id})">🗑</button>
         </div>`).join('');
     document.getElementById('specialItemsList').innerHTML = (html + monthlyHtml) || '<p style="font-size:0.8rem; opacity:0.5; text-align:center;">No groups.</p>';
@@ -575,3 +579,74 @@ function toggleTheme() {
 
 document.documentElement.setAttribute('data-theme', localStorage.getItem('prayerTheme') || 'light');
 initDaySelector();
+
+
+// ---- Backups: one automatic local snapshot per day, plus import/restore ----
+const SNAP_KEY = 'prayer_snapshots';
+
+function readSnapshots() {
+    try { return JSON.parse(localStorage.getItem(SNAP_KEY)) || []; } catch (e) { return []; }
+}
+
+// Called by saveDB before each write; stores the previously saved state once a day.
+window.snapshotBackup = function () {
+    try {
+        const prev = localStorage.getItem('prayer_backup');
+        if (!prev) return;
+        const day = dateKey(new Date());
+        const snaps = readSnapshots();
+        if (snaps.some(s => s.day === day)) return;
+        snaps.push({ day, data: prev });
+        localStorage.setItem(SNAP_KEY, JSON.stringify(snaps.slice(-14)));
+    } catch (e) { /* storage full or unavailable */ }
+};
+
+function validBackup(d) {
+    return d && typeof d === 'object' && Array.isArray(d.everyday) && weekDays.every(w => Array.isArray(d[w]));
+}
+
+function restoreData(d) {
+    window.snapshotBackup();
+    const copy = JSON.parse(JSON.stringify(d));
+    if (!Array.isArray(copy.monthly)) copy.monthly = [];
+    replaceDB(copy);
+    saveDB(copy);
+    renderPrayers();
+    renderSpecialManager();
+}
+
+function openBackupMenu() {
+    showModal("Backup", [
+        { text: "Copy to Clipboard", bg: 'var(--gold)', color: 'white', action: () => exportData() },
+        { text: "Import from Pasted Backup", action: () => setTimeout(openImport, 250) },
+        { text: "Restore a Previous Day", action: () => setTimeout(openRestoreList, 250) },
+        { text: "Cancel", isCancel: true, action: () => {} }
+    ]);
+}
+
+function openImport() {
+    showModal("Paste your backup text. This replaces everything.", [
+        { text: "Import", bg: 'var(--terracotta)', color: 'white', action: (val) => {
+            try {
+                const d = JSON.parse(val);
+                if (!validBackup(d)) throw new Error('not a prayer backup');
+                restoreData(d);
+            } catch (e) { alert("That doesn't look like a valid backup."); }
+        }},
+        { text: "Cancel", isCancel: true, action: () => {} }
+    ], true);
+}
+
+function openRestoreList() {
+    const snaps = readSnapshots().slice(-6).reverse();
+    if (!snaps.length) { alert("No daily snapshots yet. One is saved automatically each day you make a change."); return; }
+    const buttons = snaps.map(s => ({ text: s.day, action: () => {
+        try { restoreData(JSON.parse(s.data)); } catch (e) { alert("That snapshot couldn't be read."); }
+    }}));
+    buttons.push({ text: "Cancel", isCancel: true, action: () => {} });
+    showModal("Restore the state from the start of:", buttons);
+}
+
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+}

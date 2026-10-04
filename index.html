@@ -10,7 +10,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="mobile-web-app-capable" content="yes">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
     <link rel="stylesheet" href="styles.css">
     <script type="module" src="firebase.js"></script>
@@ -23,7 +23,7 @@
         <div class="sync-indicator" id="syncStatus">Initializing...</div>
         <div class="nav-row">
             <button class="floating-btn" id="googleLoginBtn" onclick="handleAuth()">Login</button>
-            <button class="floating-btn btn-gold" onclick="exportData()">Backup</button>
+            <button class="floating-btn btn-gold" onclick="openBackupMenu()">Backup</button>
             <button class="floating-btn" id="themeBtn" onclick="toggleTheme()">Dark</button>
         </div>
     </div>
