@@ -52,7 +52,7 @@
                 <div class="content-section" id="calendarSection" style="display:none;"></div>
                 <div class="content-section" id="addSection" style="display: none;">
                     <h3 id="addTitle" style="font-family: 'Cormorant Garamond', serif; margin-bottom:10px;">Add Prayer</h3>
-                    <div id="typePicker" class="pgrid" style="display:none;"></div>
+                    <div id="typePicker" class="pgrid" style="display:none; grid-template-columns: repeat(3, 1fr);"></div>
                     <div id="dayPicker" style="display:none;"></div>
                     <div id="nthPicker" style="display:none;"></div>
                     <div id="datePicker" style="display:none; margin:15px 0;"><input type="date" id="dateInput" style="padding:10px; width:100%; border:2px solid var(--sand); border-radius:8px; background:var(--cream); color:var(--text-color); font-size:1rem;"></div>
@@ -74,9 +74,7 @@
             </div>
             <div class="right-column">
                 <button class="nav-btn mode-btn active" id="viewModeBtn" onclick="showView()">View Prayers</button>
-                <button class="nav-btn mode-btn" id="addModeBtn" onclick="openAddMode('day')">Add for Day</button>
-                <button class="nav-btn special-btn" onclick="openAddMode('everyday')">+ Everyday</button>
-                <button class="nav-btn special-btn" onclick="openAddMode('special')">+ Special Group</button>
+                <button class="nav-btn special-btn" id="addModeBtn" onclick="openAddMode('day')">+ Add Prayer</button>
                 <button class="nav-btn mode-btn" id="calendarBtn" onclick="showCalendar()">Calendar</button>
                 <button class="nav-btn mode-btn" id="answeredBtn" onclick="showAnswered()">Answered</button>
             </div>

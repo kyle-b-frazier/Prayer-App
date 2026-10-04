@@ -130,7 +130,6 @@ function selectDay(day) {
     currentDay = day;
     document.querySelectorAll('.day-btn').forEach(b => b.classList.remove('active'));
     document.getElementById('btn-' + day).classList.add('active');
-    document.getElementById('addModeBtn').innerText = `Add for ${day}`;
     showView();
 }
 
@@ -169,8 +168,24 @@ function setSpecialType(t, keepRecur = false) {
 }
 
 function renderTypePicker() {
-    const types = [['weekly','Weekly'],['nth','Monthly'],['spread','Spread'],['date','Date']];
-    document.getElementById('typePicker').innerHTML = types.map(([k,l]) => `<div class="picker-day ${specialType === k ? 'selected' : ''}" onclick="setSpecialType('${k}')">${l}</div>`).join('');
+    const types = [['day', currentDay], ['everyday','Everyday'], ['weekly','Weekly'], ['nth','Monthly'], ['spread','Spread'], ['date','Date']];
+    const current = selectedCategory === 'special' ? specialType : selectedCategory;
+    document.getElementById('typePicker').innerHTML = types.map(([k,l]) => `<div class="picker-day ${current === k ? 'selected' : ''}" onclick="setAddType('${k}')">${esc(l)}</div>`).join('');
+}
+
+// One form for every kind of prayer: the chips pick where/when it appears.
+function setAddType(k) {
+    const plain = (k === 'day' || k === 'everyday');
+    selectedCategory = plain ? k : 'special';
+    ['dayPicker', 'nthPicker', 'spreadPicker', 'datePicker', 'recurRow'].forEach(id => document.getElementById(id).style.display = 'none');
+    document.getElementById('specialManagerArea').style.display = plain ? 'none' : 'block';
+    if (plain) {
+        renderTypePicker();
+    } else {
+        setSpecialType(k);
+        renderSpecialManager();
+    }
+    document.getElementById('addTitle').innerText = k === 'everyday' ? "Everyday Prayer" : (plain ? `${currentDay} Prayer` : "Special Prayer");
 }
 
 function renderNthPicker() {
@@ -201,15 +216,10 @@ function openAddMode(cat) {
     hideExtraSections();
     document.getElementById('viewSection').style.display = 'none';
     document.getElementById('addSection').style.display = 'block';
-    document.getElementById('typePicker').style.display = (cat === 'special') ? 'grid' : 'none';
-    document.getElementById('dayPicker').style.display = 'none';
-    document.getElementById('nthPicker').style.display = 'none';
-    document.getElementById('spreadPicker').style.display = 'none';
-    document.getElementById('datePicker').style.display = 'none';
-    document.getElementById('recurRow').style.display = 'none';
-    document.getElementById('specialManagerArea').style.display = (cat === 'special') ? 'block' : 'none';
-    if(cat === 'special') { multiSelectedDays = []; setSpecialType('weekly'); renderDayPicker(); renderSpecialManager(); }
-    document.getElementById('addTitle').innerText = cat === 'everyday' ? "Everyday Prayer" : (cat === 'special' ? "Special Prayer" : `${currentDay} Prayer`);
+    document.getElementById('typePicker').style.display = 'grid';
+    multiSelectedDays = [];
+    setAddType(cat === 'special' ? 'weekly' : cat);
+    renderDayPicker();
 }
 
 function renderDayPicker() {
@@ -275,10 +285,15 @@ function saveNewPrayer() {
             pendingMove = null;
         }
         multiSelectedDays.forEach(day => db[day].push({ id: Date.now()+Math.random(), groupId: gId, text, subs: JSON.parse(JSON.stringify(subs)), isSpecial: true }));
-    } else if (selectedCategory === 'everyday') {
-        db.everyday.push({ id: Date.now(), text, subs: [] });
     } else {
-        db[currentDay].push({ id: Date.now(), text, subs: [] });
+        let subs = [];
+        if (pendingMove) {
+            subs = JSON.parse(JSON.stringify(pendingMove.subs));
+            removeMoveSource(db, pendingMove);
+            pendingMove = null;
+        }
+        const target = selectedCategory === 'everyday' ? db.everyday : db[currentDay];
+        target.push({ id: Date.now(), text, subs });
     }
     saveDB(db);
     showView();
