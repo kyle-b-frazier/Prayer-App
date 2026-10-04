@@ -366,10 +366,12 @@
         }
 
         let editingGroupId = null;
+        let pendingMove = null;
 
         function openAddMode(cat) {
             selectedCategory = cat;
             editingGroupId = null;
+            pendingMove = null;
             document.getElementById('prayerInput').value = '';
             document.getElementById('viewSection').style.display = 'none';
             document.getElementById('addSection').style.display = 'block';
@@ -432,7 +434,13 @@
             if (selectedCategory === 'special') {
                 if (multiSelectedDays.length === 0) return;
                 const gId = Date.now();
-                multiSelectedDays.forEach(day => db[day].push({ id: Date.now()+Math.random(), groupId: gId, text, subs: [], isSpecial: true }));
+                let subs = [];
+                if (pendingMove) {
+                    subs = pendingMove.subs;
+                    removeMoveSource(db, pendingMove);
+                    pendingMove = null;
+                }
+                multiSelectedDays.forEach(day => db[day].push({ id: Date.now()+Math.random(), groupId: gId, text, subs: JSON.parse(JSON.stringify(subs)), isSpecial: true }));
             } else if (selectedCategory === 'everyday') {
                 db.everyday.push({ id: Date.now(), text, subs: [] });
             } else {
@@ -477,6 +485,40 @@
             ], true);
         }
 
+        function removeMoveSource(db, src) {
+            if (src.groupId) weekDays.forEach(d => db[d] = db[d].filter(p => p.groupId !== src.groupId));
+            else db[src.dayKey] = db[src.dayKey].filter(p => p.id !== src.id);
+        }
+
+        function movePrayer(dayKey, id, groupId, text) {
+            const db = getDB();
+            const p = db[dayKey].find(x => x.id === id);
+            if (!p) return;
+            text = text || p.text;
+            const src = { dayKey, id, groupId, subs: p.subs || [] };
+            const opts = [];
+            if (dayKey !== 'everyday') opts.push({ text: "Everyday", action: () => {
+                removeMoveSource(db, src);
+                db.everyday.push({ id: Date.now(), text, subs: src.subs });
+                saveDB(db);
+            }});
+            if (!groupId) opts.push({ text: "Special Group", action: () => {
+                openAddMode('special');
+                pendingMove = src;
+                multiSelectedDays = [currentDay];
+                document.getElementById('prayerInput').value = text;
+                renderDayPicker();
+            }});
+            else opts.push({ text: "Special Group (change days)", action: () => openEditGroupDays(groupId) });
+            if (dayKey === 'everyday' || groupId) opts.push({ text: `${currentDay} Only`, action: () => {
+                removeMoveSource(db, src);
+                db[currentDay].push({ id: Date.now(), text, subs: src.subs });
+                saveDB(db);
+            }});
+            opts.push({ text: "Cancel", isCancel: true, action: () => {} });
+            showModal("Move to:", opts);
+        }
+
         function editPrayerRequest(dayKey, id, groupId = null) {
             const db = getDB();
             const p = db[dayKey].find(x => x.id === id);
@@ -497,6 +539,7 @@
                         saveDB(db);
                     }},
                     { text: "Change Days", action: () => openEditGroupDays(groupId) },
+                    { text: "Move to Another Group", action: (val) => movePrayer(dayKey, id, groupId, val) },
                     { text: "Cancel", isCancel: true, action: () => {} }
                 ], true, p.text);
             } else {
@@ -506,6 +549,7 @@
                         p.text = val;
                         saveDB(db);
                     }},
+                    { text: "Move to Another Group", action: (val) => movePrayer(dayKey, id, null, val) },
                     { text: "Cancel", isCancel: true, action: () => {} }
                 ], true, p.text);
             }
