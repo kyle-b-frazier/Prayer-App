@@ -138,11 +138,11 @@
         body { font-family: 'Lato', sans-serif; background: var(--bg-gradient); min-height: 100vh; color: var(--text-color); padding-bottom: 120px; }
 
         .container { max-width: 900px; margin: 0 auto; }
-        .sticky-header { position: sticky; top: 0; background: var(--bg-gradient); z-index: 100; padding: 10px 20px; }
+        .sticky-header { position: sticky; top: 0; background: var(--bg-gradient); z-index: 100; padding: calc(10px + env(safe-area-inset-top)) 20px 10px; }
         header { text-align: center; margin-bottom: 10px; }
         h1 { font-family: 'Cormorant Garamond', serif; font-size: 2.2rem; font-weight: 300; color: var(--deep-green); letter-spacing: 2px; }
 
-        .bottom-nav { position: fixed; bottom: 20px; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 1000; pointer-events: none; }
+        .bottom-nav { position: fixed; bottom: calc(20px + env(safe-area-inset-bottom)); left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 1000; pointer-events: none; }
         .nav-row { display: flex; justify-content: center; gap: 10px; width: 100%; pointer-events: auto; }
 
         .floating-btn { background: var(--deep-green); color: white; border: none; padding: 10px 15px; border-radius: 30px; cursor: pointer; font-size: 0.7rem; box-shadow: 0 4px 10px var(--shadow); transition: 0.2s; font-family: 'Lato', sans-serif; text-transform: uppercase; }
