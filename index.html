@@ -365,8 +365,11 @@
             renderPrayers();
         }
 
+        let editingGroupId = null;
+
         function openAddMode(cat) {
             selectedCategory = cat;
+            editingGroupId = null;
             document.getElementById('prayerInput').value = '';
             document.getElementById('viewSection').style.display = 'none';
             document.getElementById('addSection').style.display = 'block';
@@ -386,9 +389,45 @@
             renderDayPicker();
         }
 
+        function openEditGroupDays(groupId) {
+            const db = getDB();
+            const insts = weekDays.map(d => db[d].find(p => p.groupId === groupId)).filter(Boolean);
+            if (!insts.length) return;
+            openAddMode('special');
+            editingGroupId = groupId;
+            multiSelectedDays = weekDays.filter(d => db[d].some(p => p.groupId === groupId));
+            document.getElementById('prayerInput').value = insts[0].text;
+            document.getElementById('addTitle').innerText = "Edit Special Prayer";
+            renderDayPicker();
+        }
+
+        function saveGroupEdit(text) {
+            const db = getDB();
+            const template = weekDays.map(d => db[d].find(p => p.groupId === editingGroupId)).find(Boolean);
+            weekDays.forEach(d => {
+                const idx = db[d].findIndex(p => p.groupId === editingGroupId);
+                if (!multiSelectedDays.includes(d)) {
+                    if (idx > -1) db[d].splice(idx, 1);
+                } else if (idx > -1) {
+                    db[d][idx].text = text;
+                } else {
+                    const subs = JSON.parse(JSON.stringify(template.subs || []));
+                    db[d].push({ id: Date.now()+Math.random(), groupId: editingGroupId, text, subs, isSpecial: true });
+                }
+            });
+            saveDB(db);
+        }
+
         function saveNewPrayer() {
             const text = document.getElementById('prayerInput').value.trim();
             if (!text) return;
+            if (editingGroupId !== null) {
+                if (multiSelectedDays.length === 0) return;
+                saveGroupEdit(text);
+                editingGroupId = null;
+                showView();
+                return;
+            }
             const db = getDB();
             if (selectedCategory === 'special') {
                 if (multiSelectedDays.length === 0) return;
@@ -457,6 +496,7 @@
                         });
                         saveDB(db);
                     }},
+                    { text: "Change Days", action: () => openEditGroupDays(groupId) },
                     { text: "Cancel", isCancel: true, action: () => {} }
                 ], true, p.text);
             } else {
