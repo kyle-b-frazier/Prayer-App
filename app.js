@@ -1,7 +1,6 @@
 let currentDay = '';
 let selectedCategory = 'day';
 let multiSelectedDays = [];
-const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 let draggedItem = null;
 
@@ -116,21 +115,22 @@ let editingMonthlyId = null;
 let specialType = 'weekly';
 let nthOcc = [];
 let nthWds = [];
-const occLabels = [[1,'1st'],[2,'2nd'],[3,'3rd'],[4,'4th'],[-1,'Last']];
 
 function setSpecialType(t, keepRecur = false) {
     specialType = t;
     document.getElementById('dayPicker').style.display = t === 'weekly' ? 'grid' : 'none';
     document.getElementById('nthPicker').style.display = t === 'nth' ? 'block' : 'none';
     document.getElementById('spreadPicker').style.display = t === 'spread' ? 'flex' : 'none';
+    document.getElementById('datePicker').style.display = t === 'date' ? 'block' : 'none';
     document.getElementById('recurRow').style.display = t === 'weekly' ? 'none' : 'flex';
+    document.getElementById('recurLabel').innerText = t === 'date' ? 'Repeat every year' : 'Repeat every month until deleted';
     if (!keepRecur) document.getElementById('spreadRecurring').checked = (t === 'nth');
     renderTypePicker();
     renderNthPicker();
 }
 
 function renderTypePicker() {
-    const types = [['weekly','Weekly'],['nth','Monthly'],['spread','Spread out']];
+    const types = [['weekly','Weekly'],['nth','Monthly'],['spread','Spread'],['date','Date']];
     document.getElementById('typePicker').innerHTML = types.map(([k,l]) => `<div class="picker-day ${specialType === k ? 'selected' : ''}" onclick="setSpecialType('${k}')">${l}</div>`).join('');
 }
 
@@ -156,6 +156,7 @@ function openAddMode(cat) {
     pendingMove = null;
     nthOcc = []; nthWds = [];
     document.getElementById('spreadCount').value = 4;
+    document.getElementById('dateInput').value = '';
     document.getElementById('spreadRecurring').checked = false;
     document.getElementById('prayerInput').value = '';
     document.getElementById('viewSection').style.display = 'none';
@@ -164,6 +165,7 @@ function openAddMode(cat) {
     document.getElementById('dayPicker').style.display = 'none';
     document.getElementById('nthPicker').style.display = 'none';
     document.getElementById('spreadPicker').style.display = 'none';
+    document.getElementById('datePicker').style.display = 'none';
     document.getElementById('recurRow').style.display = 'none';
     document.getElementById('specialManagerArea').style.display = (cat === 'special') ? 'block' : 'none';
     if(cat === 'special') { multiSelectedDays = []; setSpecialType('weekly'); renderDayPicker(); renderSpecialManager(); }
@@ -243,62 +245,15 @@ function saveNewPrayer() {
 }
 
 // ---- Monthly prayers ----
-function pad2(n) { return String(n).padStart(2, '0'); }
-function dateKey(d) { return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
-function monthKey(d) { return `${d.getFullYear()}-${pad2(d.getMonth()+1)}`; }
-function wdIndex(d) { return (d.getDay() + 6) % 7; }
-
-function nthMatches(rule, d, month) {
-    if (rule.recurring === false && month !== monthKey(d)) return false;
-    if (!rule.wds.includes(wdIndex(d))) return false;
-    const n = Math.ceil(d.getDate() / 7);
-    const dim = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-    return rule.occ.includes(n) || (rule.occ.includes(-1) && d.getDate() + 7 > dim);
-}
-
-function describeRule(m) {
-    const r = m.rule;
-    if (r.type === 'spread') return `${r.count}× ${r.recurring ? 'every month' : 'this month'}`;
-    const o = occLabels.filter(([n]) => r.occ.includes(n)).map(([,l]) => l).join(' & ');
-    const w = r.wds.slice().sort().map(i => weekDays[i].substring(0,3)).join('/');
-    return `${o} ${w}${r.recurring === false ? ' (this month)' : ''}`;
-}
-
-function dayLoad(db, d) {
-    let n = db.everyday.length + (db[weekDays[wdIndex(d)]] || []).length;
-    const mk = monthKey(d), dk = dateKey(d);
-    db.monthly.forEach(m => {
-        if (m.rule.type === 'nth') { if (nthMatches(m.rule, d, m.month)) n++; }
-        else if (((m.assigned || {})[mk] || []).includes(dk)) n++;
-    });
-    return n;
-}
-
-function assignSpread(db, m, year, month, fromDay) {
-    const dim = new Date(year, month + 1, 0).getDate();
-    const dates = [];
-    for (let day = fromDay; day <= dim; day++) dates.push(new Date(year, month, day));
-    const load = new Map(dates.map(d => [dateKey(d), dayLoad(db, d)]));
-    const picks = [];
-    for (let i = 0; i < Math.min(m.rule.count, dates.length); i++) {
-        let best = null;
-        dates.forEach(d => {
-            const k = dateKey(d);
-            if (picks.includes(k)) return;
-            if (best === null || load.get(k) < load.get(best)) best = k;
-        });
-        picks.push(best);
-        load.set(best, load.get(best) + 1);
-    }
-    m.assigned = m.assigned || {};
-    m.assigned[monthKey(dates[0])] = picks.sort();
-}
-
 function saveMonthly(db, text) {
     let rule;
     if (specialType === 'nth') {
         if (!nthOcc.length || !nthWds.length) return false;
         rule = { type: 'nth', occ: nthOcc.slice(), wds: nthWds.slice(), recurring: document.getElementById('spreadRecurring').checked };
+    } else if (specialType === 'date') {
+        const date = document.getElementById('dateInput').value;
+        if (!date) return false;
+        rule = { type: 'date', date, yearly: document.getElementById('spreadRecurring').checked };
     } else {
         const count = parseInt(document.getElementById('spreadCount').value, 10);
         if (!(count >= 1)) return false;
@@ -330,6 +285,10 @@ function openEditMonthly(id) {
         nthOcc = m.rule.occ.slice(); nthWds = m.rule.wds.slice();
         setSpecialType('nth');
         document.getElementById('spreadRecurring').checked = m.rule.recurring !== false;
+    } else if (m.rule.type === 'date') {
+        document.getElementById('dateInput').value = m.rule.date;
+        document.getElementById('spreadRecurring').checked = !!m.rule.yearly;
+        setSpecialType('date', true);
     } else {
         document.getElementById('spreadCount').value = m.rule.count;
         document.getElementById('spreadRecurring').checked = !!m.rule.recurring;
@@ -343,7 +302,12 @@ function ensureSpreadAssignments(db, viewDate) {
     const nowKey = monthKey(new Date());
     let changed = false;
     const before = db.monthly.length;
-    db.monthly = db.monthly.filter(m => m.rule.recurring !== false && (m.rule.type !== 'spread' || m.rule.recurring) || !m.month || m.month >= nowKey);
+    const todayKey = dateKey(new Date());
+    db.monthly = db.monthly.filter(m => {
+        if (m.rule.type === 'date') return m.rule.yearly || m.rule.date >= todayKey;
+        if (m.rule.recurring !== false && (m.rule.type !== 'spread' || m.rule.recurring)) return true;
+        return !m.month || m.month >= nowKey;
+    });
     if (db.monthly.length !== before) changed = true;
     db.monthly.forEach(m => {
         if (m.rule.type !== 'spread') return;
@@ -530,10 +494,7 @@ function renderPrayers() {
 
     const vDate = viewedDate();
     ensureSpreadAssignments(db, vDate);
-    const vMonth = monthKey(vDate), vKey = dateKey(vDate);
-    const monthlyToday = db.monthly.filter(m => m.rule.type === 'nth'
-        ? nthMatches(m.rule, vDate, m.month)
-        : ((m.assigned || {})[vMonth] || []).includes(vKey));
+    const monthlyToday = db.monthly.filter(m => monthlyApplies(m, vDate));
 
     const categories = [
         { key: 'everyday', label: 'Everyday', filter: (p) => true },

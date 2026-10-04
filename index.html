@@ -14,6 +14,7 @@
 
     <link rel="stylesheet" href="styles.css">
     <script type="module" src="firebase.js"></script>
+    <script src="schedule.js" defer></script>
     <script src="app.js" defer></script>
 </head>
 <body>
@@ -40,10 +41,11 @@
                 <div class="content-section" id="viewSection"><div id="prayerList"></div></div>
                 <div class="content-section" id="addSection" style="display: none;">
                     <h3 id="addTitle" style="font-family: 'Cormorant Garamond', serif; margin-bottom:10px;">Add Prayer</h3>
-                    <div id="typePicker" class="pgrid" style="display:none; grid-template-columns: repeat(3, 1fr);"></div>
+                    <div id="typePicker" class="pgrid" style="display:none;"></div>
                     <div id="dayPicker" style="display:none;"></div>
                     <div id="nthPicker" style="display:none;"></div>
-                    <label id="recurRow" class="spread-box" style="display:none; flex-direction:row; align-items:center; gap:8px; margin:5px 0 15px;"><input type="checkbox" id="spreadRecurring"> Repeat every month until deleted</label>
+                    <div id="datePicker" style="display:none; margin:15px 0;"><input type="date" id="dateInput" style="padding:10px; width:100%; border:2px solid var(--sand); border-radius:8px; background:var(--cream); color:var(--text-color); font-size:1rem;"></div>
+                    <label id="recurRow" class="spread-box" style="display:none; flex-direction:row; align-items:center; gap:8px; margin:5px 0 15px;"><input type="checkbox" id="spreadRecurring"> <span id="recurLabel">Repeat every month until deleted</span></label>
                     <div id="spreadPicker" class="spread-box" style="display:none;">
                         <label>How many times this month?<input type="number" id="spreadCount" min="1" max="31" value="4"></label>
                         <div style="font-size:0.8rem; opacity:0.7;">Placed on the days with the fewest prayers.</div>
