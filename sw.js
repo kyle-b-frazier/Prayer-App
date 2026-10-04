@@ -1,7 +1,7 @@
 // Network-first for the app's own files (so updates always arrive), falling back
 // to the cache when offline. Fonts and the Firebase SDK are cached as they load.
-const CACHE = 'prayers-v1';
-const CORE = ['./', 'index.html', 'styles.css', 'app.js', 'schedule.js', 'firebase.js', 'icon.ico'];
+const CACHE = 'prayers-v2';
+const CORE = ['./', 'index.html', 'styles.css', 'app.js', 'schedule.js', 'firebase.js', 'icon.ico', 'icon-192.png', 'apple-touch-icon.png', 'manifest.webmanifest'];
 const CACHED_HOSTS = ['www.gstatic.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 
 self.addEventListener('install', e => {
