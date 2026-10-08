@@ -71,7 +71,17 @@
         m.assigned[monthKey(new Date(year, month, 1))] = picks.sort();
     }
 
-    const api = { weekDays, occLabels, pad2, dateKey, monthKey, wdIndex, parseDateKey, nthMatches, dateMatches, monthlyApplies, describeRule, dayLoad, assignSpread };
+    // Weekday names (Monday-first on ties) with the fewest prayers, least first.
+    // Counts everyday + that weekday's own list; optionally ignores one weekly group (when editing it).
+    function leastLoadedWeekdays(db, count, excludeGroupId) {
+        const load = weekDays.map((d, i) => ({
+            d, i,
+            n: db.everyday.length + (db[d] || []).filter(p => !excludeGroupId || p.groupId !== excludeGroupId).length
+        }));
+        return load.sort((x, y) => x.n - y.n || x.i - y.i).slice(0, Math.max(1, Math.min(count, 7))).map(x => x.d);
+    }
+
+    const api = { leastLoadedWeekdays, weekDays, occLabels, pad2, dateKey, monthKey, wdIndex, parseDateKey, nthMatches, dateMatches, monthlyApplies, describeRule, dayLoad, assignSpread };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else Object.assign(root, api);
 })(typeof window !== 'undefined' ? window : globalThis);

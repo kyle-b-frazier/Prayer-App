@@ -54,6 +54,10 @@
                     <h3 id="addTitle" style="font-family: 'Cormorant Garamond', serif; margin-bottom:10px;">Add Prayer</h3>
                     <div id="typePicker" class="pgrid" style="display:none; grid-template-columns: repeat(3, 1fr);"></div>
                     <div id="dayPicker" style="display:none;"></div>
+                    <div id="autoDayRow" style="display:none; align-items:center; gap:10px; margin:0 0 15px;">
+                        <button class="nav-btn" style="flex:1; background:var(--sand); color:var(--text-color);" onclick="autoPickDays()">Auto-pick lightest day(s)</button>
+                        <label style="font-size:0.85rem; display:flex; align-items:center; gap:6px;">×<input type="number" id="autoCount" min="1" max="7" value="1" style="width:56px; padding:8px; border:2px solid var(--sand); border-radius:8px; background:var(--cream); color:var(--text-color); font-size:1rem;"> /wk</label>
+                    </div>
                     <div id="nthPicker" style="display:none;"></div>
                     <div id="datePicker" style="display:none; margin:15px 0;"><input type="date" id="dateInput" style="padding:10px; width:100%; border:2px solid var(--sand); border-radius:8px; background:var(--cream); color:var(--text-color); font-size:1rem;"></div>
                     <label id="recurRow" class="spread-box" style="display:none; flex-direction:row; align-items:center; gap:8px; margin:5px 0 15px;"><input type="checkbox" id="spreadRecurring"> <span id="recurLabel">Repeat every month until deleted</span></label>

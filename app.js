@@ -157,6 +157,7 @@ let nthWds = [];
 function setSpecialType(t, keepRecur = false) {
     specialType = t;
     document.getElementById('dayPicker').style.display = t === 'weekly' ? 'grid' : 'none';
+    document.getElementById('autoDayRow').style.display = t === 'weekly' ? 'flex' : 'none';
     document.getElementById('nthPicker').style.display = t === 'nth' ? 'block' : 'none';
     document.getElementById('spreadPicker').style.display = t === 'spread' ? 'flex' : 'none';
     document.getElementById('datePicker').style.display = t === 'date' ? 'block' : 'none';
@@ -177,7 +178,7 @@ function renderTypePicker() {
 function setAddType(k) {
     const plain = (k === 'day' || k === 'everyday');
     selectedCategory = plain ? k : 'special';
-    ['dayPicker', 'nthPicker', 'spreadPicker', 'datePicker', 'recurRow'].forEach(id => document.getElementById(id).style.display = 'none');
+    ['dayPicker', 'autoDayRow', 'nthPicker', 'spreadPicker', 'datePicker', 'recurRow'].forEach(id => document.getElementById(id).style.display = 'none');
     document.getElementById('specialManagerArea').style.display = plain ? 'none' : 'block';
     if (plain) {
         renderTypePicker();
@@ -220,6 +221,13 @@ function openAddMode(cat) {
     document.getElementById('typePicker').style.display = 'grid';
     multiSelectedDays = [];
     setAddType(cat === 'special' ? 'weekly' : cat);
+    renderDayPicker();
+}
+
+// Select the weekday(s) with the fewest prayers; the user can still adjust before saving.
+function autoPickDays() {
+    const count = parseInt(document.getElementById('autoCount').value, 10) || 1;
+    multiSelectedDays = leastLoadedWeekdays(getDB(), count, editingGroupId);
     renderDayPicker();
 }
 

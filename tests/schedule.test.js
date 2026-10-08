@@ -59,3 +59,20 @@ test('spread balances against other monthly items', () => {
     S.assignSpread(db, m, 2026, 9, 1);
     assert.strictEqual(m.assigned['2026-10'][0], '2026-10-02');
 });
+
+test('leastLoadedWeekdays picks the emptiest weekdays, Monday first on ties', () => {
+    const db = emptyDB();
+    db.Monday = [{}, {}]; db.Tuesday = [{}]; db.Wednesday = [{}, {}, {}];
+    db.Saturday = [{}]; db.Sunday = [{}, {}];
+    assert.deepStrictEqual(S.leastLoadedWeekdays(db, 1), ['Thursday']);
+    assert.deepStrictEqual(S.leastLoadedWeekdays(db, 3), ['Thursday', 'Friday', 'Tuesday']);
+});
+
+test('leastLoadedWeekdays counts everyday prayers equally and can exclude a group', () => {
+    const db = emptyDB();
+    db.everyday = [{}, {}];
+    db.Monday = [{ groupId: 7 }]; db.Tuesday = [{}];
+    assert.deepStrictEqual(S.leastLoadedWeekdays(db, 1), ['Wednesday']);
+    db.Wednesday = [{}, {}]; db.Thursday = [{}]; db.Friday = [{}]; db.Saturday = [{}]; db.Sunday = [{}];
+    assert.deepStrictEqual(S.leastLoadedWeekdays(db, 1, 7), ['Monday']);
+});
