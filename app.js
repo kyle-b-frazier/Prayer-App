@@ -185,7 +185,8 @@ function setAddType(k) {
         setSpecialType(k);
         renderSpecialManager();
     }
-    document.getElementById('addTitle').innerText = k === 'everyday' ? "Everyday Prayer" : (plain ? `${currentDay} Prayer` : "Special Prayer");
+    const titles = { everyday: 'Everyday Prayer', weekly: 'Weekly Prayer', nth: 'Monthly Prayer', spread: 'Spread-Out Prayer', date: 'Dated Prayer' };
+    document.getElementById('addTitle').innerText = titles[k] || `${currentDay} Prayer`;
 }
 
 function renderNthPicker() {
@@ -241,7 +242,7 @@ function openEditGroupDays(groupId) {
     document.getElementById('typePicker').style.display = 'none';
     multiSelectedDays = weekDays.filter(d => db[d].some(p => p.groupId === groupId));
     document.getElementById('prayerInput').value = insts[0].text;
-    document.getElementById('addTitle').innerText = "Edit Special Prayer";
+    document.getElementById('addTitle').innerText = "Edit Weekly Prayer";
     renderDayPicker();
 }
 
@@ -433,14 +434,14 @@ function movePrayer(dayKey, id, groupId, text) {
         db.everyday.push({ id: Date.now(), text, subs: src.subs });
         saveDB(db);
     }});
-    if (!groupId) opts.push({ text: "Special Group", action: () => {
+    if (!groupId) opts.push({ text: "Weekly / Monthly / Date…", action: () => {
         openAddMode('special');
         pendingMove = src;
         multiSelectedDays = [currentDay];
         document.getElementById('prayerInput').value = text;
         renderDayPicker();
     }});
-    else opts.push({ text: "Special Group (change days)", action: () => openEditGroupDays(groupId) });
+    else opts.push({ text: "Weekly (change days)", action: () => openEditGroupDays(groupId) });
     if (dayKey === 'everyday' || groupId) opts.push({ text: `${currentDay} Only`, action: () => {
         removeMoveSource(db, src);
         db[currentDay].push({ id: Date.now(), text, subs: src.subs });
@@ -465,7 +466,7 @@ function editPrayerRequest(dayKey, id, groupId = null) {
             { text: "Cancel", isCancel: true, action: () => {} }
         ], true, p.text);
     } else if (groupId) {
-        showModal("Edit special prayer text:", [
+        showModal("Edit weekly prayer text:", [
             { text: "Just Today", action: (val) => {
                 if (!val) return;
                 p.text = val;
@@ -500,7 +501,7 @@ function deletePrayerRequest(dayKey, id, groupId = null) {
     const db = getDB();
     const snap = snapshotNow();
     if (groupId) {
-        showModal("Delete Special Prayer?", [
+        showModal("Delete Weekly Prayer?", [
             { text: "Today Only", action: () => { db[dayKey] = db[dayKey].filter(p => p.id !== id); commitWithUndo(db, snap, 'Prayer deleted'); }},
             { text: "All Days", bg: 'var(--terracotta)', color: 'white', action: () => {
                 weekDays.forEach(d => db[d] = db[d].filter(p => p.groupId !== groupId));
@@ -555,7 +556,7 @@ function renderPrayers() {
 
     const categories = [
         { key: 'everyday', label: 'Everyday', filter: (p) => true },
-        { key: currentDay, label: 'Special Group', filter: (p) => p.isSpecial },
+        { key: currentDay, label: 'Weekly', filter: (p) => p.isSpecial },
         { key: 'monthly', label: `Monthly · ${vDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`, filter: (p) => monthlyToday.includes(p) },
         { key: currentDay, label: currentDay, filter: (p) => !p.isSpecial }
     ];
@@ -819,7 +820,7 @@ function onSearch(q) {
             if (seenGroups.has(p.groupId)) return;
             seenGroups.add(p.groupId);
             const days = weekDays.filter(x => db[x].some(y => y.groupId === p.groupId)).map(x => x.substring(0, 3));
-            hits.push({ p, label: 'Special · ' + days.join(' '), day: d });
+            hits.push({ p, label: 'Weekly · ' + days.join(' '), day: d });
         } else hits.push({ p, label: d, day: d });
     }));
     db.monthly.filter(match).forEach(p => hits.push({ p, label: 'Monthly · ' + describeRule(p), day: null }));
