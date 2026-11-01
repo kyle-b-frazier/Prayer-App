@@ -76,3 +76,42 @@ test('leastLoadedWeekdays counts everyday prayers equally and can exclude a grou
     db.Wednesday = [{}, {}]; db.Thursday = [{}]; db.Friday = [{}]; db.Saturday = [{}]; db.Sunday = [{}];
     assert.deepStrictEqual(S.leastLoadedWeekdays(db, 1, 7), ['Monday']);
 });
+
+test('range rule covers every day from start to end inclusive', () => {
+    const m = { rule: { type: 'range', start: '2026-11-03', end: '2026-11-10' } };
+    assert.ok(!S.monthlyApplies(m, d(2026, 11, 2)));
+    assert.ok(S.monthlyApplies(m, d(2026, 11, 3)));
+    assert.ok(S.monthlyApplies(m, d(2026, 11, 7)));
+    assert.ok(S.monthlyApplies(m, d(2026, 11, 10)));
+    assert.ok(!S.monthlyApplies(m, d(2026, 11, 11)));
+});
+
+test('range rule spans months and counts toward day load', () => {
+    const db = emptyDB();
+    db.monthly.push({ rule: { type: 'range', start: '2026-11-28', end: '2026-12-02' } });
+    assert.strictEqual(S.dayLoad(db, d(2026, 12, 1)), 1);
+    assert.strictEqual(S.dayLoad(db, d(2026, 12, 3)), 0);
+});
+
+test('describeRange shows day count', () => {
+    const y = new Date().getFullYear();
+    assert.strictEqual(S.describeRange(`${y}-11-03`, `${y}-11-10`), 'Nov 3 – Nov 10 (8 days)');
+    assert.strictEqual(S.describeRange(`${y}-11-03`, `${y}-11-03`), 'Nov 3');
+});
+
+test('leastLoadedNthWeekday picks the weekday with the fewest prayers in the chosen week', () => {
+    const db = emptyDB();
+    db.Monday = [{}]; db.Tuesday = [{}]; db.Wednesday = [{}];
+    db.Friday = [{}]; db.Saturday = [{}]; db.Sunday = [{}];
+    assert.strictEqual(S.leastLoadedNthWeekday(db, [1], 2026, 10, 1), 3);   // Thursday
+    // A dated prayer on the 1st Thursday of Nov 2026 (Nov 5) makes Thursday busier.
+    db.monthly.push({ rule: { type: 'date', date: '2026-11-05' } });
+    db.monthly.push({ rule: { type: 'date', date: '2026-11-05' } });
+    assert.notStrictEqual(S.leastLoadedNthWeekday(db, [1], 2026, 10, 1), 3);
+    // ...but not in the 2nd week.
+    assert.strictEqual(S.leastLoadedNthWeekday(db, [2], 2026, 10, 1), 3);
+});
+
+test('leastLoadedNthWeekday with no week chosen considers every occurrence, Monday on ties', () => {
+    assert.strictEqual(S.leastLoadedNthWeekday(emptyDB(), [], 2026, 10, 3), 0);
+});

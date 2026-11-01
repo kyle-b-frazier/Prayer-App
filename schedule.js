@@ -23,17 +23,37 @@
         return !!rule.yearly && rule.date.slice(5) === dateKey(d).slice(5);
     }
 
+    // Period prayer: every day from r.start through r.end (inclusive).
+    function rangeMatches(r, d) {
+        const k = dateKey(d);
+        return k >= r.start && k <= (r.end || r.start);
+    }
+
     // Does monthly item m appear on date d?
     function monthlyApplies(m, d) {
         const r = m.rule;
         if (r.type === 'nth') return nthMatches(r, d, m.month);
         if (r.type === 'date') return dateMatches(r, d);
+        if (r.type === 'range') return rangeMatches(r, d);
         return ((m.assigned || {})[monthKey(d)] || []).includes(dateKey(d));
+    }
+
+    // "Nov 3 – Nov 10 (8 days)"; adds the year when it isn't the current one.
+    function describeRange(start, end) {
+        end = end || start;
+        const thisYear = new Date().getFullYear();
+        const fmt = k => {
+            const d = parseDateKey(k);
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: d.getFullYear() === thisYear ? undefined : 'numeric' });
+        };
+        const days = Math.round((parseDateKey(end) - parseDateKey(start)) / 86400000) + 1;
+        return start === end ? fmt(start) : `${fmt(start)} – ${fmt(end)} (${days} days)`;
     }
 
     function describeRule(m) {
         const r = m.rule;
         if (r.type === 'spread') return `${r.count}× ${r.recurring ? 'every month' : 'this month'}`;
+        if (r.type === 'range') return describeRange(r.start, r.end);
         if (r.type === 'date') {
             const label = parseDateKey(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: r.yearly ? undefined : 'numeric' });
             return `${label}${r.yearly ? ' (yearly)' : ''}`;
@@ -81,7 +101,28 @@
         return load.sort((x, y) => x.n - y.n || x.i - y.i).slice(0, Math.max(1, Math.min(count, 7))).map(x => x.d);
     }
 
-    const api = { leastLoadedWeekdays, weekDays, occLabels, pad2, dateKey, monthKey, wdIndex, parseDateKey, nthMatches, dateMatches, monthlyApplies, describeRule, dayLoad, assignSpread };
+    // For a monthly "nth weekday" prayer: the weekday index (0 = Monday) whose matching dates
+    // carry the fewest prayers over `months` months starting at year/month (0-based month).
+    // With no weeks chosen, every occurrence of each weekday counts. Monday first on ties.
+    function leastLoadedNthWeekday(db, occ, year, month, months) {
+        const occs = occ && occ.length ? occ : [1, 2, 3, 4, -1];
+        const totals = [0, 0, 0, 0, 0, 0, 0], counts = [0, 0, 0, 0, 0, 0, 0];
+        for (let mi = 0; mi < Math.max(1, months || 1); mi++) {
+            const dim = new Date(year, month + mi + 1, 0).getDate();
+            for (let day = 1; day <= dim; day++) {
+                const d = new Date(year, month + mi, day);
+                const wd = wdIndex(d);
+                if (nthMatches({ occ: occs, wds: [wd] }, d)) { totals[wd] += dayLoad(db, d); counts[wd]++; }
+            }
+        }
+        // Average per matching date, so weekdays that occur 5 times in a month aren't penalised.
+        const avg = totals.map((n, i) => counts[i] ? n / counts[i] : Infinity);
+        let best = 0;
+        avg.forEach((n, i) => { if (n < avg[best]) best = i; });
+        return best;
+    }
+
+    const api = { leastLoadedNthWeekday, rangeMatches, describeRange, leastLoadedWeekdays, weekDays, occLabels, pad2, dateKey, monthKey, wdIndex, parseDateKey, nthMatches, dateMatches, monthlyApplies, describeRule, dayLoad, assignSpread };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else Object.assign(root, api);
 })(typeof window !== 'undefined' ? window : globalThis);

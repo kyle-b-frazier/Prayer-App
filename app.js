@@ -153,6 +153,8 @@ let editingMonthlyId = null;
 let specialType = 'weekly';
 let nthOcc = [];
 let nthWds = [];
+let nthAutoNote = '';
+let rangeStart = null, rangeEnd = null, rangeMonth = null;
 
 function setSpecialType(t, keepRecur = false) {
     specialType = t;
@@ -161,15 +163,17 @@ function setSpecialType(t, keepRecur = false) {
     document.getElementById('nthPicker').style.display = t === 'nth' ? 'block' : 'none';
     document.getElementById('spreadPicker').style.display = t === 'spread' ? 'flex' : 'none';
     document.getElementById('datePicker').style.display = t === 'date' ? 'block' : 'none';
-    document.getElementById('recurRow').style.display = t === 'weekly' ? 'none' : 'flex';
+    document.getElementById('rangePicker').style.display = t === 'range' ? 'block' : 'none';
+    document.getElementById('recurRow').style.display = (t === 'weekly' || t === 'range') ? 'none' : 'flex';
     document.getElementById('recurLabel').innerText = t === 'date' ? 'Repeat every year' : 'Repeat every month until deleted';
     if (!keepRecur) document.getElementById('spreadRecurring').checked = (t === 'nth');
     renderTypePicker();
     renderNthPicker();
+    if (t === 'range') renderRangePicker();
 }
 
 function renderTypePicker() {
-    const types = [['day', currentDay], ['everyday','Everyday'], ['weekly','Weekly'], ['nth','Monthly'], ['spread','Spread'], ['date','Date']];
+    const types = [['day', currentDay], ['everyday','Everyday'], ['weekly','Weekly'], ['nth','Monthly'], ['spread','Spread'], ['date','Date'], ['range','Date Range']];
     const current = selectedCategory === 'special' ? specialType : selectedCategory;
     document.getElementById('typePicker').innerHTML = types.map(([k,l]) => `<div class="picker-day ${current === k ? 'selected' : ''}" onclick="setAddType('${k}')">${esc(l)}</div>`).join('');
 }
@@ -178,7 +182,7 @@ function renderTypePicker() {
 function setAddType(k) {
     const plain = (k === 'day' || k === 'everyday');
     selectedCategory = plain ? k : 'special';
-    ['dayPicker', 'autoDayRow', 'nthPicker', 'spreadPicker', 'datePicker', 'recurRow'].forEach(id => document.getElementById(id).style.display = 'none');
+    ['dayPicker', 'autoDayRow', 'nthPicker', 'spreadPicker', 'datePicker', 'rangePicker', 'recurRow'].forEach(id => document.getElementById(id).style.display = 'none');
     document.getElementById('specialManagerArea').style.display = plain ? 'none' : 'block';
     if (plain) {
         renderTypePicker();
@@ -186,23 +190,120 @@ function setAddType(k) {
         setSpecialType(k);
         renderSpecialManager();
     }
-    const titles = { everyday: 'Everyday Prayer', weekly: 'Weekly Prayer', nth: 'Monthly Prayer', spread: 'Spread-Out Prayer', date: 'Dated Prayer' };
+    const titles = { everyday: 'Everyday Prayer', weekly: 'Weekly Prayer', nth: 'Monthly Prayer', spread: 'Spread-Out Prayer', date: 'Dated Prayer', range: 'Prayer for a Date Range' };
     document.getElementById('addTitle').innerText = titles[k] || `${currentDay} Prayer`;
 }
 
+// Monthly "nth weekday" picker: which week of the month, then which day in that week.
+const occHints = { 1: 'days 1–7', 2: 'days 8–14', 3: 'days 15–21', 4: 'days 22–28', '-1': 'last 7 days' };
+
 function renderNthPicker() {
     document.getElementById('nthPicker').innerHTML =
-        `<div class="pgrid-label">Which one(s)</div><div class="pgrid" style="grid-template-columns: repeat(5, 1fr);">` +
-        occLabels.map(([n,l]) => `<div class="picker-day ${nthOcc.includes(n) ? 'selected' : ''}" onclick="toggleNth('occ', ${n})">${l}</div>`).join('') +
-        `</div><div class="pgrid-label">Which weekday(s)</div><div class="pgrid">` +
-        weekDays.map((d,i) => `<div class="picker-day ${nthWds.includes(i) ? 'selected' : ''}" onclick="toggleNth('wd', ${i})">${d.substring(0,3)}</div>`).join('') + `</div>`;
+        `<div class="pgrid-label">1. Which week of the month?</div><div class="pgrid" style="grid-template-columns: repeat(5, minmax(0, 1fr));">` +
+        occLabels.map(([n,l]) => `<div class="picker-day ${nthOcc.includes(n) ? 'selected' : ''}" onclick="toggleNth('occ', ${n})">${l}<span class="chip-sub">${occHints[n]}</span></div>`).join('') +
+        `</div><div class="pgrid-label">2. Which day of that week?</div><div class="pgrid">` +
+        weekDays.map((d,i) => `<div class="picker-day ${nthWds.includes(i) ? 'selected' : ''}" onclick="toggleNth('wd', ${i})">${d.substring(0,3)}</div>`).join('') +
+        `<div class="picker-day auto-chip" onclick="pickLightestNthDay()" title="Choose the day with the fewest prayers">Least busy</div></div>` +
+        (nthAutoNote ? `<div class="nth-note">${esc(nthAutoNote)}</div>` : '') +
+        `<div class="nth-preview">${nthPreview()}</div>`;
+}
+
+// Plain-English summary of the current choice, plus the next few dates it lands on.
+function nthPreview() {
+    if (!nthOcc.length && !nthWds.length) return 'Example: pick <b>1st</b> and <b>Tue</b> to pray on the first Tuesday of each month.';
+    if (!nthOcc.length) return 'Now pick which week of the month.';
+    if (!nthWds.length) return 'Now pick a day (or tap <b>Least busy</b>).';
+    const recurring = document.getElementById('spreadRecurring').checked;
+    const occ = occLabels.filter(([n]) => nthOcc.includes(n)).map(([, l]) => l === 'Last' ? 'last' : l).join(' & ');
+    const wds = nthWds.slice().sort().map(i => weekDays[i]).join(' & ');
+    const rule = { type: 'nth', occ: nthOcc, wds: nthWds, recurring };
+    const now = new Date();
+    const next = [];
+    for (let i = 0; i < 120 && next.length < 3; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+        if (nthMatches(rule, d, monthKey(now))) next.push(d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }));
+    }
+    return `Prays on the <b>${esc(occ)} ${esc(wds)}</b> of ${recurring ? 'every month' : 'this month only'}.` +
+        `<br>Next: ${next.length ? esc(next.join(', ')) : 'none left this month'}`;
 }
 
 function toggleNth(kind, v) {
     const arr = kind === 'occ' ? nthOcc : nthWds;
     const idx = arr.indexOf(v);
     idx > -1 ? arr.splice(idx, 1) : arr.push(v);
+    if (kind === 'wd') nthAutoNote = '';
     renderNthPicker();
+}
+
+// Pick the weekday whose matching dates (for the chosen week(s)) have the fewest prayers.
+function pickLightestNthDay() {
+    const db = getDB();
+    const others = { ...db, monthly: db.monthly.filter(m => m.id !== editingMonthlyId) };
+    const now = new Date();
+    const months = document.getElementById('spreadRecurring').checked ? 3 : 1;
+    const wd = leastLoadedNthWeekday(others, nthOcc, now.getFullYear(), now.getMonth(), months);
+    nthWds = [wd];
+    nthAutoNote = `${weekDays[wd]} has the fewest prayers${nthOcc.length ? ' in those weeks' : ''}. You can still change it.`;
+    renderNthPicker();
+}
+
+// ---- Date range picker (pray every day between two dates) ----
+function renderRangePicker() {
+    if (!rangeMonth) { const b = rangeStart ? parseDateKey(rangeStart) : new Date(); rangeMonth = new Date(b.getFullYear(), b.getMonth(), 1); }
+    const y = rangeMonth.getFullYear(), mo = rangeMonth.getMonth();
+    const dim = new Date(y, mo + 1, 0).getDate();
+    const todayKey = dateKey(new Date());
+    const end = rangeEnd || rangeStart;
+    let cells = ['M','T','W','T','F','S','S'].map(x => `<div class="cal-dow">${x}</div>`).join('');
+    for (let i = 0; i < wdIndex(rangeMonth); i++) cells += '<div class="cal-cell empty"></div>';
+    for (let day = 1; day <= dim; day++) {
+        const k = dateKey(new Date(y, mo, day));
+        const cls = (k === rangeStart || k === rangeEnd) ? 'sel' : (rangeStart && k > rangeStart && k < end ? 'inrange' : '');
+        cells += `<div class="cal-cell ${cls} ${k === todayKey ? 'today' : ''} ${k < todayKey ? 'past' : ''}" onclick="rangePick('${k}')">${day}</div>`;
+    }
+    let summary;
+    if (!rangeStart) summary = 'Tap the first day, then the last day.';
+    else if (!rangeEnd) summary = `Starts ${esc(shortDate(rangeStart))}. Now tap the last day (or save to pray just that day).`;
+    else summary = `Prays every day: <b>${esc(describeRange(rangeStart, rangeEnd))}</b>`;
+    document.getElementById('rangePicker').innerHTML = `
+        <div class="pgrid-label">Pray every day between</div>
+        <div class="pgrid" style="grid-template-columns: repeat(3, 1fr);">
+            <div class="picker-day" onclick="rangePreset(7)">Next 7 days</div>
+            <div class="picker-day" onclick="rangePreset(14)">Next 2 weeks</div>
+            <div class="picker-day" onclick="rangePreset(30)">Next 30 days</div>
+        </div>
+        <div class="cal-head mini"><button class="icon-btn" onclick="rangeNav(-1)">‹</button><span>${rangeMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</span><button class="icon-btn" onclick="rangeNav(1)">›</button></div>
+        <div class="cal-grid mini">${cells}</div>
+        <div class="nth-preview">${summary}</div>`;
+}
+
+function rangePick(k) {
+    if (!rangeStart || rangeEnd || k < rangeStart) { rangeStart = k; rangeEnd = null; }
+    else rangeEnd = k;
+    renderRangePicker();
+}
+
+function rangeNav(delta) {
+    rangeMonth = new Date(rangeMonth.getFullYear(), rangeMonth.getMonth() + delta, 1);
+    renderRangePicker();
+}
+
+function rangePreset(days) {
+    const n = new Date();
+    rangeStart = dateKey(n);
+    rangeEnd = dateKey(new Date(n.getFullYear(), n.getMonth(), n.getDate() + days - 1));
+    rangeMonth = new Date(n.getFullYear(), n.getMonth(), 1);
+    renderRangePicker();
+}
+
+// From the Calendar view: start a date-range prayer on the tapped day.
+function addRangeFrom(k) {
+    openAddMode('special');
+    setAddType('range');
+    rangeStart = k;
+    rangeMonth = new Date(parseDateKey(k).getFullYear(), parseDateKey(k).getMonth(), 1);
+    renderRangePicker();
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
 }
 
 function openAddMode(cat) {
@@ -210,7 +311,8 @@ function openAddMode(cat) {
     editingGroupId = null;
     editingMonthlyId = null;
     pendingMove = null;
-    nthOcc = []; nthWds = [];
+    nthOcc = []; nthWds = []; nthAutoNote = '';
+    rangeStart = null; rangeEnd = null; rangeMonth = null;
     document.getElementById('spreadCount').value = 4;
     document.getElementById('dateInput').value = '';
     document.getElementById('spreadRecurring').checked = false;
@@ -318,6 +420,9 @@ function saveMonthly(db, text) {
         const date = document.getElementById('dateInput').value;
         if (!date) return false;
         rule = { type: 'date', date, yearly: document.getElementById('spreadRecurring').checked };
+    } else if (specialType === 'range') {
+        if (!rangeStart) return false;
+        rule = { type: 'range', start: rangeStart, end: rangeEnd || rangeStart };
     } else {
         const count = parseInt(document.getElementById('spreadCount').value, 10);
         if (!(count >= 1)) return false;
@@ -344,8 +449,11 @@ function openEditMonthly(id) {
     editingMonthlyId = id;
     document.getElementById('typePicker').style.display = 'none';
     document.getElementById('prayerInput').value = m.text;
-    document.getElementById('addTitle').innerText = "Edit Monthly Prayer";
-    if (m.rule.type === 'nth') {
+    document.getElementById('addTitle').innerText = m.rule.type === 'range' ? "Edit Date Range Prayer" : m.rule.type === 'date' ? "Edit Dated Prayer" : "Edit Monthly Prayer";
+    if (m.rule.type === 'range') {
+        rangeStart = m.rule.start; rangeEnd = m.rule.end || m.rule.start; rangeMonth = null;
+        setSpecialType('range');
+    } else if (m.rule.type === 'nth') {
         nthOcc = m.rule.occ.slice(); nthWds = m.rule.wds.slice();
         setSpecialType('nth');
         document.getElementById('spreadRecurring').checked = m.rule.recurring !== false;
@@ -369,6 +477,7 @@ function ensureSpreadAssignments(db, viewDate) {
     const todayKey = dateKey(new Date());
     db.monthly = db.monthly.filter(m => {
         if (m.rule.type === 'date') return m.rule.yearly || m.rule.date >= todayKey;
+        if (m.rule.type === 'range') return (m.rule.end || m.rule.start) >= todayKey;
         if (m.rule.recurring !== false && (m.rule.type !== 'spread' || m.rule.recurring)) return true;
         return !m.month || m.month >= nowKey;
     });
@@ -565,7 +674,7 @@ function renderPrayers() {
     const categories = [
         { key: 'everyday', label: 'Everyday', filter: (p) => true },
         { key: currentDay, label: 'Weekly', filter: (p) => p.isSpecial },
-        { key: 'monthly', label: `Monthly · ${vDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`, filter: (p) => monthlyToday.includes(p) },
+        { key: 'monthly', label: `Scheduled · ${vDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`, filter: (p) => monthlyToday.includes(p) },
         { key: currentDay, label: currentDay, filter: (p) => !p.isSpecial }
     ];
 
@@ -889,13 +998,14 @@ function renderCalendar() {
         const n = db.monthly.filter(m => monthlyApplies(m, d)).length;
         cells += `<div class="cal-cell ${k === todayKey ? 'today' : ''} ${k === calSelected ? 'sel' : ''}" onclick="calPick('${k}')">${day}<div class="cal-dots">${n ? '● ' + n : ''}</div></div>`;
     }
-    let detail = '<p style="font-size:0.8rem; opacity:0.6; margin-top:12px;">Dots show monthly, spread and dated prayers. Tap a day for details.</p>';
+    let detail = '<p style="font-size:0.8rem; opacity:0.6; margin-top:12px;">Dots show monthly, spread, dated and date-range prayers. Tap a day for details.</p>';
     if (calSelected) {
         const d = parseDateKey(calSelected);
         const items = db.monthly.filter(m => monthlyApplies(m, d));
         const movable = db.monthly.filter(m => m.rule.type === 'spread' && !monthlyApplies(m, d) && ((m.assigned || {})[monthKey(d)] || []).length);
         detail = `<div class="pgrid-label" style="margin-top:14px;">${esc(d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }))} · ${dayLoad(db, d)} ${dayLoad(db, d) === 1 ? "prayer" : "prayers"} total</div>` +
-            (items.map(m => `<div class="answered-item"><div class="prayer-text">${esc(m.text)}</div><div style="font-size:0.75rem; opacity:0.6;">${esc(describeRule(m))}</div></div>`).join('') || '<p style="font-size:0.85rem; opacity:0.6;">Nothing monthly on this day.</p>') +
+            (items.map(m => `<div class="answered-item"><div class="prayer-text">${esc(m.text)}</div><div style="font-size:0.75rem; opacity:0.6;">${esc(describeRule(m))}</div></div>`).join('') || '<p style="font-size:0.85rem; opacity:0.6;">Nothing scheduled on this day.</p>') +
+            `<button class="nav-btn mode-btn" style="margin:8px 0;" onclick="addRangeFrom('${calSelected}')">+ Add a prayer for a date range starting here</button>` +
             (movable.length ? `<div class="pgrid-label">Move a spread prayer here</div>` + movable.map(m => `<div class="answered-item" style="cursor:pointer;" onclick="moveSpreadHere(${m.id}, '${calSelected}')"><div class="prayer-text">${esc(m.text)}</div></div>`).join('') : '');
     }
     document.getElementById('calendarSection').innerHTML = `
