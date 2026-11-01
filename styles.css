@@ -204,3 +204,6 @@ body.sheet-open { overflow: hidden; }
 .sub-item.sub-off .sub-text { opacity: 0.55; }
 .ap-extra:empty { display: none; }
 .ap-extra { margin: -6px 0 18px; }
+.ap-day.usual { box-shadow: inset 0 0 0 1px var(--terracotta); color: var(--terracotta); font-weight: bold; }
+.ap-day:disabled { cursor: default; }
+.ap-day.span { background: var(--ap-tint); }

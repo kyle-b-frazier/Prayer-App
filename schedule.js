@@ -64,24 +64,28 @@
     }
 
     // ---- Scheduled prayer points ----
-    // A point (sub) may carry sched: {type: 'daily'|'days'|'nth'|'range'|'date', ...}.
+    // A point (sub) may carry sched: {type: 'daily'|'days'|'nth'|'range'|'date'|'until', ...}.
     // On its days it brings its prayer onto the list, even if the prayer isn't normally there.
+    // 'until' is the exception: it only shows on the prayer's usual days, from start to end.
     function pointApplies(s, d) {
         const r = s && s.sched;
         if (!r) return false;
         if (r.type === 'daily') return true;
         if (r.type === 'days') return r.wds.includes(wdIndex(d));
         if (r.type === 'nth') return nthMatches(r, d, r.month);
-        if (r.type === 'range') return rangeMatches(r, d);
+        if (r.type === 'range' || r.type === 'until') return rangeMatches(r, d);
         if (r.type === 'date') return dateMatches(r, d);
         return false;
     }
+
+    // Does point s bring its prayer onto days it isn't normally on?
+    function pointSurfaces(s, d) { return pointApplies(s, d) && s.sched.type !== 'until'; }
 
     // True once a scheduled point can never come up again (todayKey = 'YYYY-MM-DD').
     function pointExpired(s, todayKey) {
         const r = s && s.sched;
         if (!r) return false;
-        if (r.type === 'range') return (r.end || r.start) < todayKey;
+        if (r.type === 'range' || r.type === 'until') return (r.end || r.start) < todayKey;
         if (r.type === 'date') return !r.yearly && r.date < todayKey;
         if (r.type === 'nth') return r.recurring === false && !!r.month && r.month < todayKey.slice(0, 7);
         return false;
@@ -90,6 +94,7 @@
     function describePoint(r) {
         if (r.type === 'daily') return 'Every day';
         if (r.type === 'days') return 'Every ' + r.wds.slice().sort().map(i => weekDays[i].substring(0, 3)).join(', ');
+        if (r.type === 'until') return 'Until ' + parseDateKey(r.end).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         return describeRule({ rule: r });
     }
 
@@ -103,7 +108,7 @@
         const out = [];
         const consider = (p, key, t) => {
             if (shown.has(t)) return;
-            const subs = (p.subs || []).filter(s => pointApplies(s, d));
+            const subs = (p.subs || []).filter(s => pointSurfaces(s, d));
             if (!subs.length) return;
             shown.add(t);
             out.push({ p, key, subs });
@@ -172,7 +177,7 @@
         return best;
     }
 
-    const api = { pointApplies, pointExpired, describePoint, surfacedPoints, leastLoadedNthWeekday, rangeMatches, describeRange, leastLoadedWeekdays, weekDays, occLabels, pad2, dateKey, monthKey, wdIndex, parseDateKey, nthMatches, dateMatches, monthlyApplies, describeRule, dayLoad, assignSpread };
+    const api = { pointSurfaces, pointApplies, pointExpired, describePoint, surfacedPoints, leastLoadedNthWeekday, rangeMatches, describeRange, leastLoadedWeekdays, weekDays, occLabels, pad2, dateKey, monthKey, wdIndex, parseDateKey, nthMatches, dateMatches, monthlyApplies, describeRule, dayLoad, assignSpread };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else Object.assign(root, api);
 })(typeof window !== 'undefined' ? window : globalThis);
