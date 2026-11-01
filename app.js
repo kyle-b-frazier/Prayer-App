@@ -22,7 +22,6 @@ function commitWithUndo(db, snap, msg) {
 
 function refreshAll() {
     renderPrayers();
-    renderSpecialManager();
     if (document.getElementById('answeredSection').style.display !== 'none') renderAnswered();
     if (document.getElementById('calendarSection').style.display !== 'none') renderCalendar();
 }
@@ -32,8 +31,6 @@ function esc(t) {
 }
 
 let currentDay = '';
-let selectedCategory = 'day';
-let multiSelectedDays = [];
 
 let draggedItem = null;
 
@@ -141,331 +138,9 @@ function hideExtraSections() {
 function showView() {
     hideExtraSections();
     document.getElementById('viewSection').style.display = 'block';
-    document.getElementById('addSection').style.display = 'none';
     document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
     document.getElementById('viewModeBtn').classList.add('active');
     renderPrayers();
-}
-
-let editingGroupId = null;
-let pendingMove = null;
-let editingMonthlyId = null;
-let specialType = 'weekly';
-let nthOcc = [];
-let nthWds = [];
-let nthAutoNote = '';
-let rangeStart = null, rangeEnd = null, rangeMonth = null;
-
-function setSpecialType(t, keepRecur = false) {
-    specialType = t;
-    document.getElementById('dayPicker').style.display = t === 'weekly' ? 'grid' : 'none';
-    document.getElementById('autoDayRow').style.display = t === 'weekly' ? 'flex' : 'none';
-    document.getElementById('nthPicker').style.display = t === 'nth' ? 'block' : 'none';
-    document.getElementById('spreadPicker').style.display = t === 'spread' ? 'flex' : 'none';
-    document.getElementById('datePicker').style.display = t === 'date' ? 'block' : 'none';
-    document.getElementById('rangePicker').style.display = t === 'range' ? 'block' : 'none';
-    document.getElementById('recurRow').style.display = (t === 'weekly' || t === 'range') ? 'none' : 'flex';
-    document.getElementById('recurLabel').innerText = t === 'date' ? 'Repeat every year' : 'Repeat every month until deleted';
-    if (!keepRecur) document.getElementById('spreadRecurring').checked = (t === 'nth');
-    renderTypePicker();
-    renderNthPicker();
-    if (t === 'range') renderRangePicker();
-}
-
-function renderTypePicker() {
-    const types = [['day', currentDay], ['everyday','Everyday'], ['weekly','Special'], ['nth','Monthly'], ['spread','Spread'], ['date','Date'], ['range','Date Range']];
-    const current = selectedCategory === 'special' ? specialType : selectedCategory;
-    document.getElementById('typePicker').innerHTML = types.map(([k,l]) => `<div class="picker-day ${current === k ? 'selected' : ''}" onclick="setAddType('${k}')">${esc(l)}</div>`).join('');
-}
-
-// One form for every kind of prayer: the chips pick where/when it appears.
-function setAddType(k) {
-    const plain = (k === 'day' || k === 'everyday');
-    selectedCategory = plain ? k : 'special';
-    ['dayPicker', 'autoDayRow', 'nthPicker', 'spreadPicker', 'datePicker', 'rangePicker', 'recurRow'].forEach(id => document.getElementById(id).style.display = 'none');
-    document.getElementById('specialManagerArea').style.display = plain ? 'none' : 'block';
-    if (plain) {
-        renderTypePicker();
-    } else {
-        setSpecialType(k);
-        renderSpecialManager();
-    }
-    const titles = { everyday: 'Everyday Prayer', weekly: 'Special Prayer', nth: 'Monthly Prayer', spread: 'Spread-Out Prayer', date: 'Dated Prayer', range: 'Prayer for a Date Range' };
-    document.getElementById('addTitle').innerText = titles[k] || `${currentDay} Prayer`;
-}
-
-// Monthly "nth weekday" picker: which week of the month, then which day in that week.
-const occHints = { 1: 'days 1–7', 2: 'days 8–14', 3: 'days 15–21', 4: 'days 22–28', '-1': 'last 7 days' };
-
-function renderNthPicker() {
-    document.getElementById('nthPicker').innerHTML =
-        `<div class="pgrid-label">1. Which week of the month?</div><div class="pgrid" style="grid-template-columns: repeat(5, minmax(0, 1fr));">` +
-        occLabels.map(([n,l]) => `<div class="picker-day ${nthOcc.includes(n) ? 'selected' : ''}" onclick="toggleNth('occ', ${n})">${l}<span class="chip-sub">${occHints[n]}</span></div>`).join('') +
-        `</div><div class="pgrid-label">2. Which day of that week?</div><div class="pgrid">` +
-        weekDays.map((d,i) => `<div class="picker-day ${nthWds.includes(i) ? 'selected' : ''}" onclick="toggleNth('wd', ${i})">${d.substring(0,3)}</div>`).join('') +
-        `<div class="picker-day auto-chip" onclick="pickLightestNthDay()" title="Choose the day with the fewest prayers">Least busy</div></div>` +
-        (nthAutoNote ? `<div class="nth-note">${esc(nthAutoNote)}</div>` : '') +
-        `<div class="nth-preview">${nthPreview()}</div>`;
-}
-
-// Plain-English summary of the current choice, plus the next few dates it lands on.
-function nthPreview() {
-    if (!nthOcc.length && !nthWds.length) return 'Example: pick <b>1st</b> and <b>Tue</b> to pray on the first Tuesday of each month.';
-    if (!nthOcc.length) return 'Now pick which week of the month.';
-    if (!nthWds.length) return 'Now pick a day (or tap <b>Least busy</b>).';
-    const recurring = document.getElementById('spreadRecurring').checked;
-    const occ = occLabels.filter(([n]) => nthOcc.includes(n)).map(([, l]) => l === 'Last' ? 'last' : l).join(' & ');
-    const wds = nthWds.slice().sort().map(i => weekDays[i]).join(' & ');
-    const rule = { type: 'nth', occ: nthOcc, wds: nthWds, recurring };
-    const now = new Date();
-    const next = [];
-    for (let i = 0; i < 120 && next.length < 3; i++) {
-        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
-        if (nthMatches(rule, d, monthKey(now))) next.push(d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }));
-    }
-    return `Prays on the <b>${esc(occ)} ${esc(wds)}</b> of ${recurring ? 'every month' : 'this month only'}.` +
-        `<br>Next: ${next.length ? esc(next.join(', ')) : 'none left this month'}`;
-}
-
-function toggleNth(kind, v) {
-    const arr = kind === 'occ' ? nthOcc : nthWds;
-    const idx = arr.indexOf(v);
-    idx > -1 ? arr.splice(idx, 1) : arr.push(v);
-    if (kind === 'wd') nthAutoNote = '';
-    renderNthPicker();
-}
-
-// Pick the weekday whose matching dates (for the chosen week(s)) have the fewest prayers.
-function pickLightestNthDay() {
-    const db = getDB();
-    const others = { ...db, monthly: db.monthly.filter(m => m.id !== editingMonthlyId) };
-    const now = new Date();
-    const months = document.getElementById('spreadRecurring').checked ? 3 : 1;
-    const wd = leastLoadedNthWeekday(others, nthOcc, now.getFullYear(), now.getMonth(), months);
-    nthWds = [wd];
-    nthAutoNote = `${weekDays[wd]} has the fewest prayers${nthOcc.length ? ' in those weeks' : ''}. You can still change it.`;
-    renderNthPicker();
-}
-
-// ---- Date range picker (pray every day between two dates) ----
-function renderRangePicker() {
-    if (!rangeMonth) { const b = rangeStart ? parseDateKey(rangeStart) : new Date(); rangeMonth = new Date(b.getFullYear(), b.getMonth(), 1); }
-    const y = rangeMonth.getFullYear(), mo = rangeMonth.getMonth();
-    const dim = new Date(y, mo + 1, 0).getDate();
-    const todayKey = dateKey(new Date());
-    const end = rangeEnd || rangeStart;
-    let cells = ['M','T','W','T','F','S','S'].map(x => `<div class="cal-dow">${x}</div>`).join('');
-    for (let i = 0; i < wdIndex(rangeMonth); i++) cells += '<div class="cal-cell empty"></div>';
-    for (let day = 1; day <= dim; day++) {
-        const k = dateKey(new Date(y, mo, day));
-        const cls = (k === rangeStart || k === rangeEnd) ? 'sel' : (rangeStart && k > rangeStart && k < end ? 'inrange' : '');
-        cells += `<div class="cal-cell ${cls} ${k === todayKey ? 'today' : ''} ${k < todayKey ? 'past' : ''}" onclick="rangePick('${k}')">${day}</div>`;
-    }
-    let summary;
-    if (!rangeStart) summary = 'Tap the first day, then the last day.';
-    else if (!rangeEnd) summary = `Starts ${esc(shortDate(rangeStart))}. Now tap the last day (or save to pray just that day).`;
-    else summary = `Prays every day: <b>${esc(describeRange(rangeStart, rangeEnd))}</b>`;
-    document.getElementById('rangePicker').innerHTML = `
-        <div class="pgrid-label">Pray every day between</div>
-        <div class="pgrid" style="grid-template-columns: repeat(3, 1fr);">
-            <div class="picker-day" onclick="rangePreset(7)">Next 7 days</div>
-            <div class="picker-day" onclick="rangePreset(14)">Next 2 weeks</div>
-            <div class="picker-day" onclick="rangePreset(30)">Next 30 days</div>
-        </div>
-        <div class="cal-head mini"><button class="icon-btn" onclick="rangeNav(-1)">‹</button><span>${rangeMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</span><button class="icon-btn" onclick="rangeNav(1)">›</button></div>
-        <div class="cal-grid mini">${cells}</div>
-        <div class="nth-preview">${summary}</div>`;
-}
-
-function rangePick(k) {
-    if (!rangeStart || rangeEnd || k < rangeStart) { rangeStart = k; rangeEnd = null; }
-    else rangeEnd = k;
-    renderRangePicker();
-}
-
-function rangeNav(delta) {
-    rangeMonth = new Date(rangeMonth.getFullYear(), rangeMonth.getMonth() + delta, 1);
-    renderRangePicker();
-}
-
-function rangePreset(days) {
-    const n = new Date();
-    rangeStart = dateKey(n);
-    rangeEnd = dateKey(new Date(n.getFullYear(), n.getMonth(), n.getDate() + days - 1));
-    rangeMonth = new Date(n.getFullYear(), n.getMonth(), 1);
-    renderRangePicker();
-}
-
-// From the Calendar view: start a date-range prayer on the tapped day.
-function addRangeFrom(k) {
-    openAddMode('special');
-    setAddType('range');
-    rangeStart = k;
-    rangeMonth = new Date(parseDateKey(k).getFullYear(), parseDateKey(k).getMonth(), 1);
-    renderRangePicker();
-    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-}
-
-function openAddMode(cat) {
-    selectedCategory = cat;
-    editingGroupId = null;
-    editingMonthlyId = null;
-    pendingMove = null;
-    nthOcc = []; nthWds = []; nthAutoNote = '';
-    rangeStart = null; rangeEnd = null; rangeMonth = null;
-    document.getElementById('spreadCount').value = 4;
-    document.getElementById('dateInput').value = '';
-    document.getElementById('spreadRecurring').checked = false;
-    document.getElementById('prayerInput').value = '';
-    hideExtraSections();
-    document.getElementById('viewSection').style.display = 'none';
-    document.getElementById('addSection').style.display = 'block';
-    document.getElementById('typePicker').style.display = 'grid';
-    multiSelectedDays = [];
-    setAddType(cat === 'special' ? 'weekly' : cat);
-    renderDayPicker();
-}
-
-// Select the weekday(s) with the fewest prayers; the user can still adjust before saving.
-function autoPickDays() {
-    const count = parseInt(document.getElementById('autoCount').value, 10) || 1;
-    multiSelectedDays = leastLoadedWeekdays(getDB(), count, editingGroupId);
-    renderDayPicker();
-}
-
-function renderDayPicker() {
-    document.getElementById('dayPicker').innerHTML = weekDays.map(d => `<div class="picker-day ${multiSelectedDays.includes(d) ? 'selected' : ''}" onclick="togglePickerDay('${d}')">${d.substring(0,3)}</div>`).join('');
-}
-
-function togglePickerDay(day) {
-    const idx = multiSelectedDays.indexOf(day);
-    idx > -1 ? multiSelectedDays.splice(idx, 1) : multiSelectedDays.push(day);
-    renderDayPicker();
-}
-
-function openEditGroupDays(groupId) {
-    const db = getDB();
-    const insts = weekDays.map(d => db[d].find(p => p.groupId === groupId)).filter(Boolean);
-    if (!insts.length) return;
-    openAddMode('special');
-    editingGroupId = groupId;
-    document.getElementById('typePicker').style.display = 'none';
-    multiSelectedDays = weekDays.filter(d => db[d].some(p => p.groupId === groupId));
-    document.getElementById('prayerInput').value = insts[0].text;
-    document.getElementById('addTitle').innerText = "Edit Special Prayer";
-    renderDayPicker();
-}
-
-function saveGroupEdit(text) {
-    const db = getDB();
-    const template = weekDays.map(d => db[d].find(p => p.groupId === editingGroupId)).find(Boolean);
-    weekDays.forEach(d => {
-        const idx = db[d].findIndex(p => p.groupId === editingGroupId);
-        if (!multiSelectedDays.includes(d)) {
-            if (idx > -1) db[d].splice(idx, 1);
-        } else if (idx > -1) {
-            db[d][idx].text = text;
-        } else {
-            const subs = JSON.parse(JSON.stringify(template.subs || []));
-            db[d].push({ id: Date.now()+Math.random(), groupId: editingGroupId, text, subs, isSpecial: true });
-        }
-    });
-    saveDB(db);
-}
-
-function saveNewPrayer() {
-    const text = document.getElementById('prayerInput').value.trim();
-    if (!text) return;
-    if (editingGroupId !== null) {
-        if (multiSelectedDays.length === 0) return;
-        saveGroupEdit(text);
-        editingGroupId = null;
-        showView();
-        return;
-    }
-    const db = getDB();
-    if (selectedCategory === 'special' && specialType !== 'weekly') {
-        if (!saveMonthly(db, text)) return;
-    } else if (selectedCategory === 'special') {
-        if (multiSelectedDays.length === 0) return;
-        const gId = Date.now();
-        let subs = [];
-        if (pendingMove) {
-            subs = pendingMove.subs;
-            removeMoveSource(db, pendingMove);
-            pendingMove = null;
-        }
-        multiSelectedDays.forEach(day => db[day].push({ id: Date.now()+Math.random(), groupId: gId, text, subs: JSON.parse(JSON.stringify(subs)), isSpecial: true }));
-    } else {
-        let subs = [];
-        if (pendingMove) {
-            subs = JSON.parse(JSON.stringify(pendingMove.subs));
-            removeMoveSource(db, pendingMove);
-            pendingMove = null;
-        }
-        const target = selectedCategory === 'everyday' ? db.everyday : db[currentDay];
-        target.push({ id: Date.now(), text, subs });
-    }
-    saveDB(db);
-    showView();
-}
-
-// ---- Monthly prayers ----
-function saveMonthly(db, text) {
-    let rule;
-    if (specialType === 'nth') {
-        if (!nthOcc.length || !nthWds.length) return false;
-        rule = { type: 'nth', occ: nthOcc.slice(), wds: nthWds.slice(), recurring: document.getElementById('spreadRecurring').checked };
-    } else if (specialType === 'date') {
-        const date = document.getElementById('dateInput').value;
-        if (!date) return false;
-        rule = { type: 'date', date, yearly: document.getElementById('spreadRecurring').checked };
-    } else if (specialType === 'range') {
-        if (!rangeStart) return false;
-        rule = { type: 'range', start: rangeStart, end: rangeEnd || rangeStart };
-    } else {
-        const count = parseInt(document.getElementById('spreadCount').value, 10);
-        if (!(count >= 1)) return false;
-        rule = { type: 'spread', count: Math.min(count, 31), recurring: document.getElementById('spreadRecurring').checked };
-    }
-    let subs = [];
-    if (pendingMove) { subs = JSON.parse(JSON.stringify(pendingMove.subs)); removeMoveSource(db, pendingMove); pendingMove = null; }
-    const now = new Date();
-    let m = editingMonthlyId !== null ? db.monthly.find(x => x.id === editingMonthlyId) : null;
-    if (m) { m.text = text; } else { m = { id: Date.now(), text, subs }; db.monthly.push(m); }
-    m.rule = rule;
-    m.assigned = {};
-    m.month = monthKey(now);
-    if (rule.type === 'spread') assignSpread(db, m, now.getFullYear(), now.getMonth(), now.getDate());
-    editingMonthlyId = null;
-    return true;
-}
-
-function openEditMonthly(id) {
-    const db = getDB();
-    const m = db.monthly.find(x => x.id === id);
-    if (!m) return;
-    openAddMode('special');
-    editingMonthlyId = id;
-    document.getElementById('typePicker').style.display = 'none';
-    document.getElementById('prayerInput').value = m.text;
-    document.getElementById('addTitle').innerText = m.rule.type === 'range' ? "Edit Date Range Prayer" : m.rule.type === 'date' ? "Edit Dated Prayer" : "Edit Monthly Prayer";
-    if (m.rule.type === 'range') {
-        rangeStart = m.rule.start; rangeEnd = m.rule.end || m.rule.start; rangeMonth = null;
-        setSpecialType('range');
-    } else if (m.rule.type === 'nth') {
-        nthOcc = m.rule.occ.slice(); nthWds = m.rule.wds.slice();
-        setSpecialType('nth');
-        document.getElementById('spreadRecurring').checked = m.rule.recurring !== false;
-    } else if (m.rule.type === 'date') {
-        document.getElementById('dateInput').value = m.rule.date;
-        document.getElementById('spreadRecurring').checked = !!m.rule.yearly;
-        setSpecialType('date', true);
-    } else {
-        document.getElementById('spreadCount').value = m.rule.count;
-        document.getElementById('spreadRecurring').checked = !!m.rule.recurring;
-        setSpecialType('spread', true);
-    }
 }
 
 // Fill in spread dates for the viewed month and drop finished one-offs.
@@ -551,13 +226,7 @@ function movePrayer(dayKey, id, groupId, text) {
         db.everyday.push({ id: Date.now(), text, subs: src.subs });
         saveDB(db);
     }});
-    if (!groupId) opts.push({ text: "Special / Monthly / Date…", action: () => {
-        openAddMode('special');
-        pendingMove = src;
-        multiSelectedDays = [currentDay];
-        document.getElementById('prayerInput').value = text;
-        renderDayPicker();
-    }});
+    if (!groupId) opts.push({ text: "Another schedule…", action: () => openAdd({ move: src, title: 'Move Prayer', saveLabel: 'Move Prayer' }, text) });
     else opts.push({ text: "Special (change days)", action: () => openEditGroupDays(groupId) });
     if (dayKey === 'everyday' || groupId) opts.push({ text: `${currentDay} Only`, action: () => {
         removeMoveSource(db, src);
@@ -619,7 +288,7 @@ function deletePrayerRequest(dayKey, id, groupId = null) {
     const snap = snapshotNow();
     if (groupId) {
         showModal("Delete Special Prayer?", [
-            { text: "Today Only", action: () => { db[dayKey] = db[dayKey].filter(p => p.id !== id); commitWithUndo(db, snap, 'Prayer deleted'); }},
+            ...(weekDays.includes(dayKey) ? [{ text: "Today Only", action: () => { db[dayKey] = db[dayKey].filter(p => p.id !== id); commitWithUndo(db, snap, 'Prayer deleted'); }}] : []),
             { text: "All Days", bg: 'var(--terracotta)', color: 'white', action: () => {
                 weekDays.forEach(d => db[d] = db[d].filter(p => p.groupId !== groupId));
                 commitWithUndo(db, snap, 'Prayer deleted');
@@ -746,21 +415,30 @@ function togglePrayed(id) {
     renderPrayers();
 }
 
+// The list of special and scheduled prayers lives under the Calendar.
 function renderSpecialManager() {
-    const db = getDB();
-    const groups = {};
-    weekDays.forEach(d => { db[d].forEach(p => { if(p.isSpecial) groups[p.groupId] = p.text; }); });
-    const html = Object.keys(groups).map(gId => `
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:var(--cream); margin-bottom:8px; border-radius:10px; border: 1px solid var(--sand);">
-            <span style="font-family: 'Cormorant Garamond', serif; font-size:1rem;">${esc(groups[gId])}</span>
-            <button class="icon-btn" style="color:var(--terracotta);" onclick="deletePrayerRequest('', 0, ${gId})">🗑</button>
-        </div>`).join('');
-    const monthlyHtml = db.monthly.map(m => `
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; background:var(--cream); margin-bottom:8px; border-radius:10px; border: 1px solid var(--sand);">
-            <span style="font-family: 'Cormorant Garamond', serif; font-size:1rem;">${esc(m.text)}<br><span style="font-size:0.75rem; opacity:0.6;">${describeRule(m)}</span></span>
-            <button class="icon-btn" style="color:var(--terracotta);" onclick="deletePrayerRequest('monthly', ${m.id})">🗑</button>
-        </div>`).join('');
-    document.getElementById('specialItemsList').innerHTML = (html + monthlyHtml) || '<p style="font-size:0.8rem; opacity:0.5; text-align:center;">No groups.</p>';
+    if (document.getElementById('calendarSection').style.display !== 'none') renderCalendar();
+}
+
+function scheduledListHtml(db) {
+    const groups = new Map();
+    weekDays.forEach(d => db[d].forEach(p => {
+        if (!p.isSpecial) return;
+        if (!groups.has(p.groupId)) groups.set(p.groupId, { text: p.text, days: [] });
+        groups.get(p.groupId).days.push(d.substring(0, 3));
+    }));
+    const row = (text, meta, edit, del) => `
+        <div class="sched-row">
+            <div class="sched-text"><div class="prayer-text">${esc(text)}</div><div class="sched-meta">${esc(meta)}</div></div>
+            <div class="prayer-actions">
+                <button class="icon-btn" title="Change schedule" onclick="${edit}">✏️</button>
+                <button class="icon-btn" title="Delete" onclick="${del}">🗑</button>
+            </div>
+        </div>`;
+    const rows = [...groups].map(([gId, g]) => row(g.text, 'Special · ' + g.days.join(', '), `openEditGroupDays(${gId})`, `deletePrayerRequest('', 0, ${gId})`))
+        .concat(db.monthly.map(m => row(m.text, describeRule(m), `openEditMonthly(${m.id})`, `deletePrayerRequest('monthly', ${m.id})`)));
+    return `<div class="pgrid-label" style="margin-top:22px;">Special &amp; scheduled prayers</div>` +
+        (rows.join('') || '<p style="font-size:0.85rem; opacity:0.6;">None yet. Add one with + Add Prayer.</p>');
 }
 
 function toggleTheme() {
@@ -874,7 +552,6 @@ function markAnswered(dayKey, id, groupId) {
 
 function showAnswered() {
     document.getElementById('viewSection').style.display = 'none';
-    document.getElementById('addSection').style.display = 'none';
     hideExtraSections();
     document.getElementById('answeredSection').style.display = 'block';
     document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
@@ -966,7 +643,6 @@ let calMonth = null;
 function showCalendar() {
     if (!calMonth) { const n = new Date(); calMonth = new Date(n.getFullYear(), n.getMonth(), 1); }
     document.getElementById('viewSection').style.display = 'none';
-    document.getElementById('addSection').style.display = 'none';
     hideExtraSections();
     document.getElementById('calendarSection').style.display = 'block';
     document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
@@ -1010,7 +686,7 @@ function renderCalendar() {
     }
     document.getElementById('calendarSection').innerHTML = `
         <div class="cal-head"><button class="icon-btn" onclick="calNav(-1)">‹</button><span>${calMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</span><button class="icon-btn" onclick="calNav(1)">›</button></div>
-        <div class="cal-grid">${cells}</div>${detail}`;
+        <div class="cal-grid">${cells}</div>${detail}${scheduledListHtml(db)}`;
 }
 
 function moveSpreadHere(id, toKey) {
