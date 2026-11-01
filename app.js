@@ -643,8 +643,9 @@ function calPick(key) { calSelected = key; renderCalendar(); }
 // Every prayer with a scheduled point on date d (Special groups once): [{ p, subs }].
 function pointsOn(db, d) {
     const seen = new Set(), out = [];
+    const onList = (k, p) => k === 'everyday' || k === weekDays[wdIndex(d)] || (k === 'monthly' && monthlyApplies(p, d));
     ['everyday', ...weekDays, 'monthly'].forEach(k => (db[k] || []).forEach(p => {
-        const subs = (p.subs || []).filter(s => pointApplies(s, d));
+        const subs = (p.subs || []).filter(s => pointSurfaces(s, d) || (pointApplies(s, d) && onList(k, p)));
         const tag = p.groupId ? 'g' + p.groupId : k + p.id;
         if (!subs.length || seen.has(tag)) return;
         seen.add(tag);

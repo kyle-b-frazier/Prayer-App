@@ -148,3 +148,15 @@ test('surfacedPoints shows a Special group once', () => {
     assert.strictEqual(S.surfacedPoints(db, d(2026, 11, 3)).length, 1);   // Tuesday
     assert.strictEqual(S.surfacedPoints(db, d(2026, 11, 2)).length, 0);   // Monday: already listed
 });
+
+test("'until' points show on the prayer's usual days only and never bring it up elsewhere", () => {
+    const db = emptyDB();
+    const pt = { id: 9, text: 'Recovery', sched: { type: 'until', start: '2026-11-01', end: '2026-11-22' } };
+    db.Sunday = [{ id: 1, text: 'Malcomes Family', subs: [pt] }];
+    assert.ok(S.pointApplies(pt, d(2026, 11, 15)));
+    assert.ok(!S.pointApplies(pt, d(2026, 11, 29)));
+    assert.strictEqual(S.surfacedPoints(db, d(2026, 11, 3)).length, 0);   // Tuesday: not brought up
+    assert.ok(!S.pointExpired(pt, '2026-11-22'));
+    assert.ok(S.pointExpired(pt, '2026-11-23'));
+    assert.strictEqual(S.describePoint(pt.sched), 'Until Nov 22');
+});

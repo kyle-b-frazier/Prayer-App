@@ -11,10 +11,13 @@ const ADD_KINDS = [
     ['date', 'On one date', 'A surgery, an interview, a birthday']
 ];
 // Choices when adding a point to an existing prayer.
-function pointKinds(name) {
+function pointKinds(name, usual) {
     const short = name.length <= 18 ? name : 'this prayer';
+    const one = usual.wds && usual.wds.length === 1 ? weekDays[usual.wds[0]] : null;
     return [
         ['always', `Whenever ${short} comes up`, 'Stays on it until you delete it'],
+        ...(usual.all ? [] : [['until', one ? `The next few ${one}s` : 'Its usual days, for a while',
+            one ? `Only on ${one}s, then it's removed` : `Only when ${short} already comes up, then it's removed`]]),
         ['range', 'For a while', 'e.g. the 3 days around a surgery'],
         ['date', 'On one date', 'e.g. the day of an interview'],
         ['daily', 'Every day', `Brings ${short} up every day`],
@@ -24,6 +27,7 @@ function pointKinds(name) {
 }
 const ADD_ICONS = {
     always: '<path d="M7 4h10v17l-5-4-5 4z"/>',
+    until: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M9 15.5l2 2 4-4"/>',
     daily: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
     days: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M7 14h2M11 14h2M15 14h2"/>',
     monthly: '<path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/><circle cx="12" cy="12" r="1.5"/>',
@@ -42,7 +46,7 @@ function addDefaults() {
         mode: 'new', editId: null, move: null, title: 'New Prayer', saveLabel: 'Add Prayer',
         days: [weekDays.indexOf(currentDay)], autoCount: 1, daysNote: '',
         mMode: 'set', occ: [], mDays: [], mNote: '', mRepeat: true, spreadN: 3,
-        start: null, end: null, calMonth: new Date(now.getFullYear(), now.getMonth(), 1),
+        start: null, end: null, untilEnd: null, calMonth: new Date(now.getFullYear(), now.getMonth(), 1),
         date: '', yearly: false
     };
 }
@@ -144,6 +148,30 @@ function addBody(kind) {
                 <span class="ap-hint" style="flex:1; min-width:12em;">times a month, on the days with the fewest prayers. You can move them later in Calendar.</span>
             </div>`}
         <label class="ap-toggle"><input type="checkbox" id="apRepeat" ${F.mRepeat ? 'checked' : ''} onchange="F.mRepeat=this.checked;renderAdd()"> Repeat every month</label>`;
+    if (kind === 'until') {
+        const y = F.calMonth.getFullYear(), mo = F.calMonth.getMonth(), dim = new Date(y, mo + 1, 0).getDate();
+        const todayKey = dateKey(new Date());
+        const one = F.point.usual.wds && F.point.usual.wds.length === 1 ? weekDays[F.point.usual.wds[0]] : null;
+        const presets = one ? [2, 4, 8].map(n => [`apUntilCount(${n})`, `Next ${n} ${one}s`])
+            : [['apUntilSpan(0, 14)', 'Next 2 weeks'], ['apUntilSpan(1, 0)', 'Next month'], ['apUntilSpan(3, 0)', 'Next 3 months']];
+        let cells = ['M','T','W','T','F','S','S'].map(x => `<div class="ap-dow">${x}</div>`).join('');
+        for (let i = 0; i < wdIndex(F.calMonth); i++) cells += '<div class="ap-day blank"></div>';
+        for (let day = 1; day <= dim; day++) {
+            const d = new Date(y, mo, day), k = dateKey(d);
+            const inside = F.untilEnd && k >= todayKey && k <= F.untilEnd;
+            const cls = inside ? (apUsual(d) ? 'end' : 'span') : (k >= todayKey && apUsual(d) ? 'usual' : '');
+            cells += `<button type="button" class="ap-day ${cls} ${k === todayKey ? 'today' : ''} ${k < todayKey ? 'past' : ''}" ${k < todayKey ? 'disabled' : ''} onclick="F.untilEnd='${k}';renderAdd()">${day}</button>`;
+        }
+        return `
+            <div class="ap-chips c3">${presets.map(([fn, l]) => apChip(false, l, undefined, fn)).join('')}</div>
+            <div class="ap-cal-head">
+                <button type="button" onclick="apCalNav(-1)" aria-label="Previous month">‹</button>
+                <span>${F.calMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</span>
+                <button type="button" onclick="apCalNav(1)" aria-label="Next month">›</button>
+            </div>
+            <div class="ap-cal">${cells}</div>
+            <p class="ap-hint">Or tap the last day. The filled-in dates are when ${esc(F.point.name)} comes up with this point; it's removed after that.</p>`;
+    }
     if (kind === 'range') {
         const y = F.calMonth.getFullYear(), mo = F.calMonth.getMonth(), dim = new Date(y, mo + 1, 0).getDate();
         const todayKey = dateKey(new Date()), end = F.end || F.start;
@@ -207,6 +235,43 @@ function apPreset(n) {
     renderAdd();
 }
 
+// Is the point's prayer on the list on date d anyway?
+function apUsual(d) {
+    const u = F.point.usual;
+    if (u.all) return true;
+    if (u.monthlyId) { const m = getDB().monthly.find(x => x.id === u.monthlyId); return !!m && monthlyApplies(m, d); }
+    return u.wds.includes(wdIndex(d));
+}
+
+// The prayer's usual dates from today through endKey.
+function apUsualDates(endKey) {
+    const t = new Date(), out = [];
+    for (let i = 0; i < 800; i++) {
+        const d = new Date(t.getFullYear(), t.getMonth(), t.getDate() + i);
+        if (dateKey(d) > endKey) break;
+        if (apUsual(d)) out.push(d);
+    }
+    return out;
+}
+
+function apUntilCount(n) {
+    const t = new Date();
+    let found = 0;
+    for (let i = 0; i < 800; i++) {
+        const d = new Date(t.getFullYear(), t.getMonth(), t.getDate() + i);
+        if (apUsual(d) && ++found === n) { F.untilEnd = dateKey(d); break; }
+    }
+    F.calMonth = new Date(t.getFullYear(), t.getMonth(), 1);
+    renderAdd();
+}
+
+function apUntilSpan(months, days) {
+    const t = new Date();
+    F.untilEnd = dateKey(new Date(t.getFullYear(), t.getMonth() + months, t.getDate() + days - 1));
+    F.calMonth = new Date(t.getFullYear(), t.getMonth(), 1);
+    renderAdd();
+}
+
 function apCalNav(d) { F.calMonth = new Date(F.calMonth.getFullYear(), F.calMonth.getMonth() + d, 1); renderAdd(); }
 
 function listJoin(a) { return a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]; }
@@ -234,6 +299,15 @@ function addSchedule() {
         return { ok: true, text: `on the ${listJoin(occ)} ${listJoin(F.mDays.slice().sort().map(i => weekDays[i]))} of ${F.mRepeat ? 'every month' : 'this month only'}.`,
                  next: next.length ? 'Next: ' + next.join(' · ') : 'No dates left this month.' };
     }
+    if (F.kind === 'until') {
+        if (!F.untilEnd) return { ok: false, text: 'Pick how long, or tap the last day on the calendar.' };
+        const dates = apUsualDates(F.untilEnd);
+        if (!dates.length) return { ok: false, text: `${F.point.name} doesn't come up by then. Pick a later day.` };
+        const one = F.point.usual.wds && F.point.usual.wds.length === 1 ? weekDays[F.point.usual.wds[0]] : null;
+        const last = dateKey(dates[dates.length - 1]);
+        if (dates.length === 1) return { ok: true, text: `on ${long(last)} only.` };
+        return { ok: true, text: `on the next ${dates.length} ${one ? one + 's' : 'days it comes up'}, through ${long(last)}.` };
+    }
     if (F.kind === 'range') {
         if (!F.start) return { ok: false, text: 'Pick the first and last day.' };
         const end = F.end || F.start;
@@ -255,6 +329,7 @@ function renderAddSummary() {
         !text ? 'Write who or what you are praying for.' :
         !sc.ok ? esc(sc.text) :
         F.point && F.kind === 'always' ? `<b>${esc(name)}</b> will show under ${esc(F.point.name)} whenever it comes up.` :
+        F.point && F.kind === 'until' ? `<b>${esc(name)}</b> will show under ${esc(F.point.name)} ${esc(sc.text)}` :
         F.point ? `<b>${esc(name)}</b> will bring up ${esc(F.point.name)} ${esc(sc.text)}${sc.next ? `<span class="ap-next">${esc(sc.next)}</span>` : ''}` :
         `<b>${esc(name)}</b> will come up ${esc(sc.text)}${sc.next ? `<span class="ap-next">${esc(sc.next)}</span>` : ''}`}</span>`;
     document.getElementById('addSaveBtn').disabled = !ready;
@@ -317,6 +392,7 @@ function pointRule() {
     if (F.kind === 'days') return { type: 'days', wds: F.days.slice().sort() };
     if (F.kind === 'monthly') return { type: 'nth', occ: F.occ.slice(), wds: F.mDays.slice(), recurring: F.mRepeat, month: monthKey(new Date()) };
     if (F.kind === 'range') return { type: 'range', start: F.start, end: F.end || F.start };
+    if (F.kind === 'until') return { type: 'until', start: dateKey(new Date()), end: F.untilEnd };
     if (F.kind === 'date') return { type: 'date', date: F.date, yearly: F.yearly };
     return null;
 }
@@ -334,9 +410,15 @@ function savePoint(db, text) {
 
 // Add a point (sub-item) to an existing prayer, optionally with its own schedule.
 function addSub(dayKey, id) {
-    const p = (getDB()[dayKey] || []).find(x => x.id === id);
+    const db = getDB();
+    const p = (db[dayKey] || []).find(x => x.id === id);
     if (!p) return;
-    openAdd({ kind: 'always', kinds: pointKinds(p.text), point: { key: dayKey, id, name: p.text, group: !!(p.isSpecial && p.groupId) },
+    // The days this prayer is on the list anyway (used by "the next few Sundays").
+    const usual = dayKey === 'everyday' ? { all: true }
+        : dayKey === 'monthly' ? { monthlyId: id }
+        : p.groupId ? { wds: weekDays.map((d, i) => db[d].some(x => x.groupId === p.groupId) ? i : -1).filter(i => i > -1) }
+        : { wds: [weekDays.indexOf(dayKey)] };
+    openAdd({ kind: 'always', kinds: pointKinds(p.text, usual), point: { key: dayKey, id, name: p.text, usual, group: !!(p.isSpecial && p.groupId) },
               title: 'Add a Point', saveLabel: 'Add Point' });
 }
 
