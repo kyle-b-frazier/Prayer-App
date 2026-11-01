@@ -115,3 +115,36 @@ test('leastLoadedNthWeekday picks the weekday with the fewest prayers in the cho
 test('leastLoadedNthWeekday with no week chosen considers every occurrence, Monday on ties', () => {
     assert.strictEqual(S.leastLoadedNthWeekday(emptyDB(), [], 2026, 10, 3), 0);
 });
+
+test('scheduled point applies only on its days and expires after', () => {
+    const s = { text: 'Surgery', sched: { type: 'range', start: '2026-11-03', end: '2026-11-05' } };
+    assert.ok(!S.pointApplies(s, d(2026, 11, 2)));
+    assert.ok(S.pointApplies(s, d(2026, 11, 4)));
+    assert.ok(!S.pointApplies({ text: 'plain' }, d(2026, 11, 4)));
+    assert.ok(!S.pointExpired(s, '2026-11-05'));
+    assert.ok(S.pointExpired(s, '2026-11-06'));
+    assert.ok(!S.pointExpired({ sched: { type: 'date', date: '2026-01-01', yearly: true } }, '2026-11-06'));
+    assert.ok(S.pointApplies({ sched: { type: 'days', wds: [0, 2] } }, d(2026, 11, 4)));   // Wed
+});
+
+test('surfacedPoints brings a Wednesday prayer onto other days of its point', () => {
+    const db = emptyDB();
+    const surgery = { id: 9, text: 'Surgery', sched: { type: 'range', start: '2026-11-02', end: '2026-11-04' } };
+    db.Wednesday = [{ id: 1, text: 'Alex', subs: [surgery, { id: 8, text: 'Job' }] }];
+    const mon = S.surfacedPoints(db, d(2026, 11, 2));
+    assert.strictEqual(mon.length, 1);
+    assert.strictEqual(mon[0].key, 'Wednesday');
+    assert.deepStrictEqual(mon[0].subs.map(s => s.text), ['Surgery']);
+    assert.strictEqual(S.surfacedPoints(db, d(2026, 11, 4)).length, 0);   // already on Wednesday's list
+    assert.strictEqual(S.surfacedPoints(db, d(2026, 11, 5)).length, 0);   // range over
+    assert.strictEqual(S.dayLoad(db, d(2026, 11, 2)), 1);
+});
+
+test('surfacedPoints shows a Special group once', () => {
+    const db = emptyDB();
+    const pt = () => ({ text: 'Trip', sched: { type: 'daily' } });
+    db.Monday = [{ id: 1, groupId: 5, isSpecial: true, text: 'Mom', subs: [pt()] }];
+    db.Thursday = [{ id: 2, groupId: 5, isSpecial: true, text: 'Mom', subs: [pt()] }];
+    assert.strictEqual(S.surfacedPoints(db, d(2026, 11, 3)).length, 1);   // Tuesday
+    assert.strictEqual(S.surfacedPoints(db, d(2026, 11, 2)).length, 0);   // Monday: already listed
+});

@@ -197,3 +197,10 @@ body.sheet-open { overflow: hidden; }
     .ap-save { min-width: 190px; }
 }
 @media (prefers-reduced-motion: reduce) { .ap-sheet { animation: none; } .ap-opt { transition: none; } }
+
+/* Scheduled prayer points */
+.sub-tag { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 10px; font-family: 'Lato', sans-serif; font-size: 0.68rem; vertical-align: middle; border: 1px solid var(--sand); color: var(--soft-green); }
+.sub-tag.on { border-color: var(--terracotta); color: var(--terracotta); }
+.sub-item.sub-off .sub-text { opacity: 0.55; }
+.ap-extra:empty { display: none; }
+.ap-extra { margin: -6px 0 18px; }
