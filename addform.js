@@ -7,7 +7,7 @@ const ADD_KINDS = [
     ['daily', 'Every day', 'Family, your church, things you never want to skip'],
     ['days', 'Certain days a week', 'One day or several, e.g. every Sunday'],
     ['monthly', 'Monthly', 'e.g. the 1st Tuesday, or 3 times a month'],
-    ['range', 'For a while', 'A trip, an illness, a hard season'],
+    ['range', 'Schedule on Calendar', 'A trip, an illness, a hard season'],
     ['date', 'On one date', 'A surgery, an interview, a birthday']
 ];
 // Choices when adding a point to an existing prayer.
@@ -18,7 +18,7 @@ function pointKinds(name, usual) {
         ['always', `Whenever ${short} comes up`, 'Stays on it until you delete it'],
         ...(usual.all ? [] : [['until', one ? `The next few ${one}s` : 'Its usual days, for a while',
             one ? `Only on ${one}s, then it's removed` : `Only when ${short} already comes up, then it's removed`]]),
-        ['range', 'For a while', 'e.g. the 3 days around a surgery'],
+        ['range', 'Schedule on Calendar', 'e.g. the 3 days around a surgery'],
         ['date', 'On one date', 'e.g. the day of an interview'],
         ['daily', 'Every day', `Brings ${short} up every day`],
         ['days', 'Certain days a week', `Brings ${short} up on the days you pick`],
