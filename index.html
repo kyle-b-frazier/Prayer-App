@@ -19,6 +19,7 @@
     <script type="module" src="firebase.js"></script>
     <script src="schedule.js" defer></script>
     <script src="app.js" defer></script>
+    <script src="addform.js" defer></script>
 </head>
 <body>
 
@@ -50,38 +51,37 @@
                 </div>
                 <div class="content-section" id="answeredSection" style="display:none;"></div>
                 <div class="content-section" id="calendarSection" style="display:none;"></div>
-                <div class="content-section" id="addSection" style="display: none;">
-                    <h3 id="addTitle" style="font-family: 'Cormorant Garamond', serif; margin-bottom:10px;">Add Prayer</h3>
-                    <div id="typePicker" class="pgrid" style="display:none; grid-template-columns: repeat(4, 1fr);"></div>
-                    <div id="dayPicker" style="display:none;"></div>
-                    <div id="autoDayRow" style="display:none; align-items:center; gap:10px; margin:0 0 15px;">
-                        <button class="nav-btn" style="flex:1; background:var(--sand); color:var(--text-color);" onclick="autoPickDays()">Auto-pick lightest day(s)</button>
-                        <label style="font-size:0.85rem; display:flex; align-items:center; gap:6px;">×<input type="number" id="autoCount" min="1" max="7" value="1" style="width:56px; padding:8px; border:2px solid var(--sand); border-radius:8px; background:var(--cream); color:var(--text-color); font-size:1rem;"> /wk</label>
-                    </div>
-                    <div id="nthPicker" style="display:none;"></div>
-                    <div id="datePicker" style="display:none; margin:15px 0;"><input type="date" id="dateInput" style="padding:10px; width:100%; border:2px solid var(--sand); border-radius:8px; background:var(--cream); color:var(--text-color); font-size:1rem;"></div>
-                    <div id="rangePicker" style="display:none;"></div>
-                    <label id="recurRow" class="spread-box" style="display:none; flex-direction:row; align-items:center; gap:8px; margin:5px 0 15px;"><input type="checkbox" id="spreadRecurring" onchange="renderNthPicker()"> <span id="recurLabel">Repeat every month until deleted</span></label>
-                    <div id="spreadPicker" class="spread-box" style="display:none;">
-                        <label>How many times this month?<input type="number" id="spreadCount" min="1" max="31" value="4"></label>
-                        <div style="font-size:0.8rem; opacity:0.7;">Placed on the days with the fewest prayers.</div>
-                    </div>
-                    <textarea id="prayerInput" placeholder="Write your prayer here..."></textarea>
-                    <div style="display: flex; flex-direction: column; gap: 10px;">
-                        <button class="nav-btn save-btn" onclick="saveNewPrayer()">Save Prayer</button>
-                        <button class="nav-btn cancel-btn" onclick="showView()">Cancel</button>
-                    </div>
-                    <div id="specialManagerArea" style="display:none; margin-top:25px;">
-                        <div style="font-size:0.8rem; font-weight:bold; color:var(--gold); border-top:1px solid var(--sand); padding-top:15px; margin-bottom:10px; text-transform:uppercase; letter-spacing:1px;">Your Scheduled Prayers</div>
-                        <div id="specialItemsList"></div>
-                    </div>
-                </div>
             </div>
             <div class="right-column">
                 <button class="nav-btn mode-btn active" id="viewModeBtn" onclick="showView()">View Prayers</button>
-                <button class="nav-btn special-btn" id="addModeBtn" onclick="openAddMode('day')">+ Add Prayer</button>
+                <button class="nav-btn special-btn" id="addModeBtn" onclick="openAdd()">+ Add Prayer</button>
                 <button class="nav-btn mode-btn" id="calendarBtn" onclick="showCalendar()">Calendar</button>
                 <button class="nav-btn mode-btn" id="answeredBtn" onclick="showAnswered()">Answered</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="ap-overlay" id="addOverlay" hidden>
+        <div class="ap-sheet" role="dialog" aria-modal="true" aria-labelledby="addTitle">
+            <div class="ap-head">
+                <div class="ap-grabber"></div>
+                <div class="ap-head-row">
+                    <h2 id="addTitle">New Prayer</h2>
+                    <button type="button" class="ap-cancel" onclick="closeAdd()">Cancel</button>
+                </div>
+            </div>
+            <div class="ap-scroll" id="addScroll">
+                <div class="ap-main">
+                    <label class="ap-q" for="prayerInput">Who or what are you praying for?</label>
+                    <textarea id="prayerInput" placeholder="e.g. Sam, safe travels"></textarea>
+                    <span class="ap-q">How often should it come up?</span>
+                    <div class="ap-opts" id="addOpts"></div>
+                </div>
+                <div class="ap-side" id="addSide"></div>
+            </div>
+            <div class="ap-foot">
+                <div class="ap-summary" id="addSummary" aria-live="polite"></div>
+                <button type="button" class="ap-save" id="addSaveBtn" onclick="saveNewPrayer()">Add Prayer</button>
             </div>
         </div>
     </div>
