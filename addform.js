@@ -10,7 +10,20 @@ const ADD_KINDS = [
     ['range', 'For a while', 'A trip, an illness, a hard season'],
     ['date', 'On one date', 'A surgery, an interview, a birthday']
 ];
+// Choices when adding a point to an existing prayer.
+function pointKinds(name) {
+    const short = name.length <= 18 ? name : 'this prayer';
+    return [
+        ['always', `Whenever ${short} comes up`, 'Stays on it until you delete it'],
+        ['range', 'For a while', 'e.g. the 3 days around a surgery'],
+        ['date', 'On one date', 'e.g. the day of an interview'],
+        ['daily', 'Every day', `Brings ${short} up every day`],
+        ['days', 'Certain days a week', `Brings ${short} up on the days you pick`],
+        ['monthly', 'Monthly', 'e.g. the 1st Tuesday of each month']
+    ];
+}
 const ADD_ICONS = {
+    always: '<path d="M7 4h10v17l-5-4-5 4z"/>',
     daily: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
     days: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M7 14h2M11 14h2M15 14h2"/>',
     monthly: '<path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/><circle cx="12" cy="12" r="1.5"/>',
@@ -25,7 +38,7 @@ let F = null;   // form state while the sheet is open
 function addDefaults() {
     const now = new Date();
     return {
-        kind: 'days', allowed: ADD_KINDS.map(k => k[0]),
+        kind: 'days', kinds: ADD_KINDS, allowed: null, point: null, allDays: true,
         mode: 'new', editId: null, move: null, title: 'New Prayer', saveLabel: 'Add Prayer',
         days: [weekDays.indexOf(currentDay)], autoCount: 1, daysNote: '',
         mMode: 'set', occ: [], mDays: [], mNote: '', mRepeat: true, spreadN: 3,
@@ -39,7 +52,11 @@ function openAdd(opts = {}, text = '') {
     if (F.start) { const s = parseDateKey(F.start); F.calMonth = new Date(s.getFullYear(), s.getMonth(), 1); }
     document.getElementById('addTitle').innerText = F.title;
     document.getElementById('addSaveBtn').innerText = F.saveLabel;
-    document.getElementById('prayerInput').value = text;
+    const input = document.getElementById('prayerInput');
+    input.value = text;
+    input.placeholder = F.point ? 'e.g. Surgery on Thursday' : 'e.g. Sam, safe travels';
+    document.getElementById('addTextLabel').innerText = F.point ? `New point for ${F.point.name}` : 'Who or what are you praying for?';
+    document.getElementById('addHowLabel').innerText = F.point ? 'When should it come up?' : 'How often should it come up?';
     document.getElementById('addOverlay').hidden = false;
     document.body.classList.add('sheet-open');
     document.getElementById('addScroll').scrollTop = 0;
@@ -58,7 +75,9 @@ function setAddKind(k) { F.kind = k; renderAdd(); }
 function renderAdd() {
     if (!F) return;
     const wide = wideAdd.matches;
-    document.getElementById('addOpts').innerHTML = ADD_KINDS.filter(([k]) => F.allowed.includes(k)).map(([k, title, sub]) => `
+    document.getElementById('addExtra').innerHTML = F.point && F.point.group ?
+        `<label class="ap-toggle"><input type="checkbox" id="apAllDays" ${F.allDays ? 'checked' : ''} onchange="F.allDays=this.checked"> Add to every day of this Special prayer</label>` : '';
+    document.getElementById('addOpts').innerHTML = F.kinds.filter(([k]) => !F.allowed || F.allowed.includes(k)).map(([k, title, sub]) => `
         <div class="ap-opt ${F.kind === k ? 'on' : ''}">
             <button type="button" class="ap-opt-row" aria-pressed="${F.kind === k}" onclick="setAddKind('${k}')">
                 <svg class="ap-ic" viewBox="0 0 24 24" aria-hidden="true">${ADD_ICONS[k]}</svg>
@@ -67,7 +86,7 @@ function renderAdd() {
             </button>
             ${!wide && F.kind === k ? `<div class="ap-opt-body">${addBody(k)}</div>` : ''}
         </div>`).join('');
-    const kind = ADD_KINDS.find(([k]) => k === F.kind);
+    const kind = F.kinds.find(([k]) => k === F.kind);
     document.getElementById('addSide').innerHTML = wide ? `<div class="ap-side-title">${kind[1]}</div><div class="ap-side-body">${addBody(F.kind)}</div>` : '';
     renderAddSummary();
 }
@@ -91,7 +110,11 @@ function addDayCounts() {
 }
 
 function addBody(kind) {
-    if (kind === 'daily') return `<p class="ap-hint">Shows at the top of every day's list.</p>`;
+    if (kind === 'always') return `<p class="ap-hint">Shows under ${esc(F.point.name)} on the days it's already on your list.</p>`;
+    if (kind === 'daily') return `<p class="ap-hint">${F.point ? `${esc(F.point.name)} shows up every day with this point, until you delete it.` : "Shows at the top of every day's list."}</p>`;
+    if (kind === 'days' && F.point) return `
+            <div class="ap-chips c7">${weekDays.map((d, i) => apChip(F.days.includes(i), d.substring(0, 3), undefined, `apToggle('days', ${i})`)).join('')}</div>
+            <p class="ap-hint">${esc(F.point.name)} shows up on these days with this point.</p>`;
     if (kind === 'days') {
         const counts = addDayCounts();
         return `
@@ -105,10 +128,10 @@ function addBody(kind) {
             ${F.daysNote ? `<p class="ap-note">${esc(F.daysNote)}</p>` : ''}`;
     }
     if (kind === 'monthly') return `
-        <div class="ap-seg">
+        ${F.point ? '' : `<div class="ap-seg">
             <button type="button" class="${F.mMode === 'set' ? 'on' : ''}" onclick="F.mMode='set';renderAdd()">On a set day</button>
             <button type="button" class="${F.mMode === 'spread' ? 'on' : ''}" onclick="F.mMode='spread';renderAdd()">A few times, anywhere</button>
-        </div>
+        </div>`}
         ${F.mMode === 'set' ? `
             <div><span class="ap-q">Which week?</span>
             <div class="ap-chips c5">${occLabels.map(([n, l]) => apChip(F.occ.includes(n), l, OCC_HINTS[n], `apToggle('occ', ${n})`)).join('')}</div></div>
@@ -132,7 +155,7 @@ function addBody(kind) {
             cells += `<button type="button" class="ap-day ${cls} ${k === todayKey ? 'today' : ''} ${k < todayKey ? 'past' : ''}" onclick="apPick('${k}')">${day}</button>`;
         }
         return `
-            <div class="ap-chips c3">${[[7, 'Next 7 days'], [14, 'Next 2 weeks'], [30, 'Next 30 days']].map(([n, l]) => apChip(false, l, undefined, `apPreset(${n})`)).join('')}</div>
+            <div class="ap-chips c3">${(F.point ? [[3, 'Next 3 days'], [7, 'Next 7 days'], [14, 'Next 2 weeks']] : [[7, 'Next 7 days'], [14, 'Next 2 weeks'], [30, 'Next 30 days']]).map(([n, l]) => apChip(false, l, undefined, `apPreset(${n})`)).join('')}</div>
             <div class="ap-cal-head">
                 <button type="button" onclick="apCalNav(-1)" aria-label="Previous month">‹</button>
                 <span>${F.calMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</span>
@@ -191,6 +214,7 @@ function listJoin(a) { return a.length < 2 ? a.join('') : a.slice(0, -1).join(',
 // What the current choice means, in words; ok is false until the choice is complete.
 function addSchedule() {
     const long = k => parseDateKey(k).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+    if (F.kind === 'always') return { ok: true, text: '' };
     if (F.kind === 'daily') return { ok: true, text: 'every day.' };
     if (F.kind === 'days') {
         if (!F.days.length) return { ok: false, text: 'Pick at least one day.' };
@@ -229,7 +253,10 @@ function renderAddSummary() {
     el.className = 'ap-summary' + (ready ? ' ready' : '');
     el.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span>${
         !text ? 'Write who or what you are praying for.' :
-        sc.ok ? `<b>${esc(name)}</b> will come up ${esc(sc.text)}${sc.next ? `<span class="ap-next">${esc(sc.next)}</span>` : ''}` : esc(sc.text)}</span>`;
+        !sc.ok ? esc(sc.text) :
+        F.point && F.kind === 'always' ? `<b>${esc(name)}</b> will show under ${esc(F.point.name)} whenever it comes up.` :
+        F.point ? `<b>${esc(name)}</b> will bring up ${esc(F.point.name)} ${esc(sc.text)}${sc.next ? `<span class="ap-next">${esc(sc.next)}</span>` : ''}` :
+        `<b>${esc(name)}</b> will come up ${esc(sc.text)}${sc.next ? `<span class="ap-next">${esc(sc.next)}</span>` : ''}`}</span>`;
     document.getElementById('addSaveBtn').disabled = !ready;
 }
 
@@ -262,6 +289,11 @@ function saveNewPrayer() {
     const text = document.getElementById('prayerInput').value.trim();
     if (!F || !text || !addSchedule().ok) return;
     const db = getDB();
+    if (F.point) {
+        savePoint(db, text);
+        saveDB(db); closeAdd(); refreshAll(); showToast('Point added');
+        return;
+    }
     let subs = [];
     if (F.move) { subs = JSON.parse(JSON.stringify(F.move.subs || [])); removeMoveSource(db, F.move); }
     const dayNames = F.days.slice().sort().map(i => weekDays[i]);
@@ -277,6 +309,35 @@ function saveNewPrayer() {
     closeAdd();
     refreshAll();
     showToast(msg);
+}
+
+// The schedule stored on a point; null means "whenever its prayer comes up".
+function pointRule() {
+    if (F.kind === 'daily') return { type: 'daily' };
+    if (F.kind === 'days') return { type: 'days', wds: F.days.slice().sort() };
+    if (F.kind === 'monthly') return { type: 'nth', occ: F.occ.slice(), wds: F.mDays.slice(), recurring: F.mRepeat, month: monthKey(new Date()) };
+    if (F.kind === 'range') return { type: 'range', start: F.start, end: F.end || F.start };
+    if (F.kind === 'date') return { type: 'date', date: F.date, yearly: F.yearly };
+    return null;
+}
+
+function savePoint(db, text) {
+    const p = (db[F.point.key] || []).find(x => x.id === F.point.id);
+    if (!p) return;
+    const sched = pointRule();
+    const targets = p.groupId && F.allDays ? weekDays.map(d => db[d].find(x => x.groupId === p.groupId)).filter(Boolean) : [p];
+    targets.forEach(t => {
+        if (!t.subs) t.subs = [];
+        t.subs.push(Object.assign({ id: Date.now() + Math.random(), text, date: dateKey(new Date()) }, sched ? { sched: JSON.parse(JSON.stringify(sched)) } : {}));
+    });
+}
+
+// Add a point (sub-item) to an existing prayer, optionally with its own schedule.
+function addSub(dayKey, id) {
+    const p = (getDB()[dayKey] || []).find(x => x.id === id);
+    if (!p) return;
+    openAdd({ kind: 'always', kinds: pointKinds(p.text), point: { key: dayKey, id, name: p.text, group: !!(p.isSpecial && p.groupId) },
+              title: 'Add a Point', saveLabel: 'Add Point' });
 }
 
 // Edit the days of a Special prayer group.

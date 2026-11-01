@@ -157,6 +157,12 @@ function ensureSpreadAssignments(db, viewDate) {
         return !m.month || m.month >= nowKey;
     });
     if (db.monthly.length !== before) changed = true;
+    // Scheduled points remove themselves once they can't come up again.
+    ['everyday', ...weekDays, 'monthly'].forEach(k => (db[k] || []).forEach(p => {
+        if (!p.subs || !p.subs.some(s => pointExpired(s, todayKey))) return;
+        p.subs = p.subs.filter(s => !pointExpired(s, todayKey));
+        changed = true;
+    }));
     db.monthly.forEach(m => {
         if (m.rule.type !== 'spread') return;
         const applies = m.rule.recurring ? true : m.month === mk;
@@ -172,41 +178,6 @@ function viewedDate() {
     const d = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     d.setDate(d.getDate() + ((weekDays.indexOf(currentDay) - wdIndex(today) + 7) % 7));
     return d;
-}
-
-function addSub(dayKey, id) {
-    showModal("Add point:", [
-        { text: "Save", bg: 'var(--gold)', color: 'white', action: (val) => {
-            const db = getDB();
-            const p = db[dayKey].find(x => x.id === id);
-            if (!p) return;
-            if (p.isSpecial && p.groupId) {
-                setTimeout(() => {
-                    showModal("Add to all days in group?", [
-                        { text: "Just Today", action: () => {
-                            if(!p.subs) p.subs = [];
-                            p.subs.push({id: Date.now(), text: val, date: dateKey(new Date())});
-                            saveDB(db);
-                        }},
-                        { text: "All Days", bg: 'var(--gold)', color: 'white', action: () => {
-                            const gId = p.groupId;
-                            weekDays.forEach(d => {
-                                const inst = db[d].find(pr => pr.groupId === gId);
-                                if(inst) { if(!inst.subs) inst.subs = []; inst.subs.push({id: Date.now()+Math.random(), text: val, date: dateKey(new Date())}); }
-                            });
-                            saveDB(db);
-                        }},
-                        { text: "Cancel", isCancel: true, action: () => {} }
-                    ]);
-                }, 300);
-            } else {
-                if(!p.subs) p.subs = [];
-                p.subs.push({id: Date.now(), text: val, date: dateKey(new Date())});
-                saveDB(db);
-            }
-        }},
-        { text: "Cancel", isCancel: true, action: () => {} }
-    ], true);
 }
 
 function removeMoveSource(db, src) {
@@ -340,55 +311,63 @@ function renderPrayers() {
     ensureSpreadAssignments(db, vDate);
     const monthlyToday = db.monthly.filter(m => monthlyApplies(m, vDate));
 
+    const vLabel = vDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const own = (key, list) => list.map(p => ({ p, key }));
+    // Each item carries the list it lives in (key), so buttons act on the right prayer.
     const categories = [
-        { key: 'everyday', label: 'Everyday', filter: (p) => true },
-        { key: currentDay, label: 'Special Prayers', filter: (p) => p.isSpecial },
-        { key: 'monthly', label: `Scheduled · ${vDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`, filter: (p) => monthlyToday.includes(p) },
-        { key: currentDay, label: currentDay, filter: (p) => !p.isSpecial }
+        { label: 'Everyday', key: 'everyday', drag: true, items: own('everyday', db.everyday) },
+        { label: 'Special Prayers', key: currentDay, drag: true, items: own(currentDay, db[currentDay].filter(p => p.isSpecial)) },
+        { label: `Scheduled · ${vLabel}`, key: 'monthly', drag: false, items: own('monthly', monthlyToday) },
+        { label: `Prayer points · ${vLabel}`, key: 'points', drag: false, items: surfacedPoints(db, vDate).map(x => ({ p: x.p, key: x.key, only: x.subs })) },
+        { label: currentDay, key: currentDay, drag: true, items: own(currentDay, db[currentDay].filter(p => !p.isSpecial)) }
     ];
 
     const vKey = dateKey(vDate);
     let total = 0, done = 0;
 
     categories.forEach(cat => {
-        const items = (db[cat.key] || []).filter(cat.filter);
-        if (items.length === 0) return;
+        if (cat.items.length === 0) return;
 
         const groupDiv = document.createElement('div');
         groupDiv.className = 'drag-container';
         groupDiv.dataset.key = cat.key;
         groupDiv.innerHTML = `<div class="prayer-group-title">${cat.label}</div>`;
 
-        items.forEach((p) => {
+        cat.items.forEach(({ p, key, only }) => {
             const pDiv = document.createElement('div');
             const prayed = db.prayed.includes(`${vKey}:${p.id}`);
             total++; if (prayed) done++;
             pDiv.className = `prayer-item ${p.isSpecial ? 'is-special-item' : ''} ${prayed ? 'prayed' : ''}`;
-            pDiv.draggable = cat.key !== 'monthly';
+            pDiv.draggable = cat.drag;
             pDiv.dataset.raw = JSON.stringify(p);
 
-            let subsHtml = (p.subs || []).map(s => `
-                <div class="sub-item">
-                    <span class="sub-text">• ${esc(s.text)}${s.date ? `<span class="sub-date">${esc(shortDate(s.date))}</span>` : ''}</span>
-                    <button class="icon-btn sub-delete" onclick="event.stopPropagation(); deleteSub('${cat.key}', ${p.id}, ${s.id})">🗑</button>
-                </div>`).join('');
+            const subsHtml = (only || p.subs || []).map(s => {
+                const on = pointApplies(s, vDate);
+                const meta = s.sched ? `<span class="sub-tag ${on ? 'on' : ''}">${esc(describePoint(s.sched))}</span>`
+                    : s.date ? `<span class="sub-date">${esc(shortDate(s.date))}</span>` : '';
+                return `
+                <div class="sub-item ${s.sched && !on ? 'sub-off' : ''}">
+                    <span class="sub-text">• ${esc(s.text)}${meta}</span>
+                    <button class="icon-btn sub-delete" onclick="event.stopPropagation(); deleteSub('${key}', ${p.id}, ${s.id})">🗑</button>
+                </div>`;
+            }).join('');
 
             pDiv.innerHTML = `
-                <div class="drag-handle" ${cat.key === 'monthly' ? 'style="visibility:hidden"' : ''}>≡</div>
+                <div class="drag-handle" ${cat.drag ? '' : 'style="visibility:hidden"'}>≡</div>
                 <div class="prayer-content">
                     <div class="prayer-header">
                         <div class="prayer-text">${esc(p.text)}</div>
                         <div class="prayer-actions">
                             <button class="icon-btn check-btn" onclick="event.stopPropagation(); togglePrayed(${p.id})">${prayed ? '✔' : '○'}</button>
-                            <button class="icon-btn" onclick="event.stopPropagation(); addSub('${cat.key}', ${p.id})">➕</button>
-                            <button class="icon-btn" onclick="event.stopPropagation(); editPrayerRequest('${cat.key}', ${p.id}, ${p.groupId})">✏️</button>
-                            <button class="icon-btn" onclick="event.stopPropagation(); openPrayerMenu('${cat.key}', ${p.id}, ${p.groupId})">⋯</button>
+                            <button class="icon-btn" title="Add a point" onclick="event.stopPropagation(); addSub('${key}', ${p.id})">➕</button>
+                            <button class="icon-btn" onclick="event.stopPropagation(); editPrayerRequest('${key}', ${p.id}, ${p.groupId})">✏️</button>
+                            <button class="icon-btn" onclick="event.stopPropagation(); openPrayerMenu('${key}', ${p.id}, ${p.groupId})">⋯</button>
                         </div>
                     </div>
                     ${subsHtml ? `<div class="sub-list">${subsHtml}</div>` : ''}
                 </div>
             `;
-            if (cat.key !== 'monthly') initDragAndTouchEvents(pDiv, cat.key);
+            if (cat.drag) initDragAndTouchEvents(pDiv, key);
             groupDiv.appendChild(pDiv);
         });
         listContainer.appendChild(groupDiv);
@@ -661,6 +640,19 @@ function calNav(delta) {
 
 function calPick(key) { calSelected = key; renderCalendar(); }
 
+// Every prayer with a scheduled point on date d (Special groups once): [{ p, subs }].
+function pointsOn(db, d) {
+    const seen = new Set(), out = [];
+    ['everyday', ...weekDays, 'monthly'].forEach(k => (db[k] || []).forEach(p => {
+        const subs = (p.subs || []).filter(s => pointApplies(s, d));
+        const tag = p.groupId ? 'g' + p.groupId : k + p.id;
+        if (!subs.length || seen.has(tag)) return;
+        seen.add(tag);
+        out.push({ p, subs });
+    }));
+    return out;
+}
+
 function renderCalendar() {
     const db = getDB();
     ensureSpreadAssignments(db, calMonth);
@@ -671,16 +663,18 @@ function renderCalendar() {
     for (let i = 0; i < wdIndex(calMonth); i++) cells += '<div class="cal-cell empty"></div>';
     for (let day = 1; day <= dim; day++) {
         const d = new Date(y, mo, day), k = dateKey(d);
-        const n = db.monthly.filter(m => monthlyApplies(m, d)).length;
+        const n = db.monthly.filter(m => monthlyApplies(m, d)).length + pointsOn(db, d).length;
         cells += `<div class="cal-cell ${k === todayKey ? 'today' : ''} ${k === calSelected ? 'sel' : ''}" onclick="calPick('${k}')">${day}<div class="cal-dots">${n ? '● ' + n : ''}</div></div>`;
     }
-    let detail = '<p style="font-size:0.8rem; opacity:0.6; margin-top:12px;">Dots show monthly, spread, dated and date-range prayers. Tap a day for details.</p>';
+    let detail = '<p style="font-size:0.8rem; opacity:0.6; margin-top:12px;">Dots show scheduled prayers and prayer points. Tap a day for details.</p>';
     if (calSelected) {
         const d = parseDateKey(calSelected);
         const items = db.monthly.filter(m => monthlyApplies(m, d));
+        const points = pointsOn(db, d);
         const movable = db.monthly.filter(m => m.rule.type === 'spread' && !monthlyApplies(m, d) && ((m.assigned || {})[monthKey(d)] || []).length);
         detail = `<div class="pgrid-label" style="margin-top:14px;">${esc(d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }))} · ${dayLoad(db, d)} ${dayLoad(db, d) === 1 ? "prayer" : "prayers"} total</div>` +
-            (items.map(m => `<div class="answered-item"><div class="prayer-text">${esc(m.text)}</div><div style="font-size:0.75rem; opacity:0.6;">${esc(describeRule(m))}</div></div>`).join('') || '<p style="font-size:0.85rem; opacity:0.6;">Nothing scheduled on this day.</p>') +
+            (items.map(m => `<div class="answered-item"><div class="prayer-text">${esc(m.text)}</div><div style="font-size:0.75rem; opacity:0.6;">${esc(describeRule(m))}</div></div>`).join('') || (points.length ? '' : '<p style="font-size:0.85rem; opacity:0.6;">Nothing scheduled on this day.</p>')) +
+            points.map(({ p, subs }) => `<div class="answered-item"><div class="prayer-text">${esc(p.text)}</div>${subs.map(x => `<div class="sub-text" style="font-size:1rem;">• ${esc(x.text)} <span class="sub-tag on">${esc(describePoint(x.sched))}</span></div>`).join('')}</div>`).join('') +
             `<button class="nav-btn mode-btn" style="margin:8px 0;" onclick="addRangeFrom('${calSelected}')">+ Add a prayer for a date range starting here</button>` +
             (movable.length ? `<div class="pgrid-label">Move a spread prayer here</div>` + movable.map(m => `<div class="answered-item" style="cursor:pointer;" onclick="moveSpreadHere(${m.id}, '${calSelected}')"><div class="prayer-text">${esc(m.text)}</div></div>`).join('') : '');
     }

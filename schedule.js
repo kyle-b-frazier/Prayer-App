@@ -63,11 +63,61 @@
         return `${o} ${w}${r.recurring === false ? ' (this month)' : ''}`;
     }
 
-    // Number of prayers shown on date d (everyday + weekday + monthly).
+    // ---- Scheduled prayer points ----
+    // A point (sub) may carry sched: {type: 'daily'|'days'|'nth'|'range'|'date', ...}.
+    // On its days it brings its prayer onto the list, even if the prayer isn't normally there.
+    function pointApplies(s, d) {
+        const r = s && s.sched;
+        if (!r) return false;
+        if (r.type === 'daily') return true;
+        if (r.type === 'days') return r.wds.includes(wdIndex(d));
+        if (r.type === 'nth') return nthMatches(r, d, r.month);
+        if (r.type === 'range') return rangeMatches(r, d);
+        if (r.type === 'date') return dateMatches(r, d);
+        return false;
+    }
+
+    // True once a scheduled point can never come up again (todayKey = 'YYYY-MM-DD').
+    function pointExpired(s, todayKey) {
+        const r = s && s.sched;
+        if (!r) return false;
+        if (r.type === 'range') return (r.end || r.start) < todayKey;
+        if (r.type === 'date') return !r.yearly && r.date < todayKey;
+        if (r.type === 'nth') return r.recurring === false && !!r.month && r.month < todayKey.slice(0, 7);
+        return false;
+    }
+
+    function describePoint(r) {
+        if (r.type === 'daily') return 'Every day';
+        if (r.type === 'days') return 'Every ' + r.wds.slice().sort().map(i => weekDays[i].substring(0, 3)).join(', ');
+        return describeRule({ rule: r });
+    }
+
+    // Prayers not normally on date d that have a point scheduled for d: [{ p, key, subs }].
+    // Special groups appear once even though each day holds its own copy.
+    function surfacedPoints(db, d) {
+        const today = weekDays[wdIndex(d)];
+        const tag = p => p.groupId ? 'g' + p.groupId : 'p' + p.id;
+        const shown = new Set((db[today] || []).map(tag));
+        db.monthly.forEach(m => { if (monthlyApplies(m, d)) shown.add('m' + m.id); });
+        const out = [];
+        const consider = (p, key, t) => {
+            if (shown.has(t)) return;
+            const subs = (p.subs || []).filter(s => pointApplies(s, d));
+            if (!subs.length) return;
+            shown.add(t);
+            out.push({ p, key, subs });
+        };
+        weekDays.forEach(w => { if (w !== today) (db[w] || []).forEach(p => consider(p, w, tag(p))); });
+        db.monthly.forEach(m => consider(m, 'monthly', 'm' + m.id));
+        return out;
+    }
+
+    // Number of prayers shown on date d (everyday + weekday + monthly + ones brought up by points).
     function dayLoad(db, d) {
         let n = db.everyday.length + (db[weekDays[wdIndex(d)]] || []).length;
         db.monthly.forEach(m => { if (monthlyApplies(m, d)) n++; });
-        return n;
+        return n + surfacedPoints(db, d).length;
     }
 
     // Choose the m.rule.count least-loaded dates (earliest on ties) from fromDay.
@@ -122,7 +172,7 @@
         return best;
     }
 
-    const api = { leastLoadedNthWeekday, rangeMatches, describeRange, leastLoadedWeekdays, weekDays, occLabels, pad2, dateKey, monthKey, wdIndex, parseDateKey, nthMatches, dateMatches, monthlyApplies, describeRule, dayLoad, assignSpread };
+    const api = { pointApplies, pointExpired, describePoint, surfacedPoints, leastLoadedNthWeekday, rangeMatches, describeRange, leastLoadedWeekdays, weekDays, occLabels, pad2, dateKey, monthKey, wdIndex, parseDateKey, nthMatches, dateMatches, monthlyApplies, describeRule, dayLoad, assignSpread };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else Object.assign(root, api);
 })(typeof window !== 'undefined' ? window : globalThis);
